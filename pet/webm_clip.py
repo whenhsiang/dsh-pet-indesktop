@@ -1050,6 +1050,8 @@ def _meta_cache_file_lock():
                 else:
                     import fcntl
                     fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    import fcntl
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
                 return f
             except OSError:
                 if time.monotonic() >= deadline:

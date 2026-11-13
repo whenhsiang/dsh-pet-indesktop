@@ -1123,8 +1123,6 @@ def _bridge_writer_alive(pid: int) -> bool | None:
     if pid <= 0:
         return None
     try:
-        if sys.platform == "win32":
-            return _probe_writer_pid_windows(pid)
         return _probe_writer_pid_posix(pid)
     except Exception:
         log.debug("桥文件写者探活失败 pid=%s", pid, exc_info=True)
@@ -2791,57 +2789,31 @@ class ClaudeCodeMonitor(BaseAgentMonitor):
     def _ensure_hook_script(cls, events_file: Path) -> tuple[Path, str]:
         """把事件写入脚本落地到 events_file 同目录，返回 (脚本路径, 命令模板)。
         命令模板中 {script} 为脚本路径占位符、{event} 为事件名占位符。"""
-        if sys.platform == "win32":
-            script = events_file.parent / "claude_event_hook.ps1"
-            # PowerShell 脚本：不依赖任何 Python 环境，打包版同样可用。
-            # 注意：以下为普通字符串（非 f-string），{0}/{1}/{2} 是 PowerShell -f 的占位符。
-            # stdin 读取 Claude Code 传入的 JSON（含 tool_name）；未重定向时跳过绝不阻塞。
-            events_file.parent.mkdir(parents=True, exist_ok=True)
-            script.write_text(
-                "param([string]$EventName = 'unknown')\n"
-                "$tool = ''\n"
-                "if ([Console]::IsInputRedirected) {\n"
-                "  try {\n"
-                "    $raw = [Console]::In.ReadToEnd()\n"
-                "    if ($raw) { $j = $raw | ConvertFrom-Json -ErrorAction Stop; if ($j.tool_name) { $tool = [string]$j.tool_name } }\n"
-                "  } catch {}\n"
-                "}\n"
-                "$file = Join-Path $PSScriptRoot 'claude.jsonl'\n"
-                "$rec = [ordered]@{ ts = [DateTimeOffset]::Now.ToUnixTimeMilliseconds() / 1000.0; agent = 'claude'; event = $EventName }\n"
-                "if ($tool) { $rec['tool'] = $tool }\n"
-                "# ConvertTo-Json 负责全部转义，不手工拼 JSON（tool_name 含引号/控制字符也安全）\n"
-                "Add-Content -Path $file -Value ($rec | ConvertTo-Json -Compress) -Encoding UTF8\n",
-                encoding="utf-8",
-            )
-            cmd_tmpl = (
-                'powershell -NoProfile -ExecutionPolicy Bypass -File "{script}" {event}'
-            )
-        else:
-            script = events_file.parent / "claude_event_hook.py"
-            events_file.parent.mkdir(parents=True, exist_ok=True)
-            script.write_text(
-                "import json, sys, time\n"
-                "from pathlib import Path\n"
-                "event = sys.argv[1] if len(sys.argv) > 1 else 'unknown'\n"
-                "tool = ''\n"
-                "try:\n"
-                "    if not sys.stdin.isatty():\n"
-                "        raw = sys.stdin.read()\n"
-                "        if raw.strip():\n"
-                "            tool = str(json.loads(raw).get('tool_name') or '')\n"
-                "except Exception:\n"
-                "    pass\n"
-                "out = Path(__file__).with_name('claude.jsonl')\n"
-                "rec = {'ts': time.time(), 'agent': 'claude', 'event': event}\n"
-                "if tool:\n"
-                "    rec['tool'] = tool\n"
-                "with out.open('a', encoding='utf-8') as f:\n"
-                "    f.write(json.dumps(rec, ensure_ascii=False) + '\\n')\n",
-                encoding="utf-8",
-            )
-            # 源码运行时 sys.executable 是 Python；打包（frozen）时退化为 python3
-            exe = sys.executable if not getattr(sys, "frozen", False) else "python3"
-            cmd_tmpl = f'"{exe}" "{{script}}" {{event}}'
+        script = events_file.parent / "claude_event_hook.py"
+        events_file.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text(
+            "import json, sys, time\n"
+            "from pathlib import Path\n"
+            "event = sys.argv[1] if len(sys.argv) > 1 else 'unknown'\n"
+            "tool = ''\n"
+            "try:\n"
+            "    if not sys.stdin.isatty():\n"
+            "        raw = sys.stdin.read()\n"
+            "        if raw.strip():\n"
+            "            tool = str(json.loads(raw).get('tool_name') or '')\n"
+            "except Exception:\n"
+            "    pass\n"
+            "out = Path(__file__).with_name('claude.jsonl')\n"
+            "rec = {'ts': time.time(), 'agent': 'claude', 'event': event}\n"
+            "if tool:\n"
+            "    rec['tool'] = tool\n"
+            "with out.open('a', encoding='utf-8') as f:\n"
+            "    f.write(json.dumps(rec, ensure_ascii=False) + '\\n')\n",
+            encoding="utf-8",
+        )
+        # 源码运行时 sys.executable 是 Python；打包（frozen）时退化为 python3
+        exe = sys.executable if not getattr(sys, "frozen", False) else "python3"
+        cmd_tmpl = f'"{exe}" "{{script}}" {{event}}'
         return script, cmd_tmpl
 
     @classmethod

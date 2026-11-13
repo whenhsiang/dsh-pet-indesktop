@@ -523,17 +523,13 @@ def chat_secret_carryover(chat: Any) -> dict[str, dict]:
 
 
 def _default_base():
-    if sys.platform == "win32":
-        return Path(os.environ.get("APPDATA") or Path.home())
-    if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support"
-    return Path.home() / ".config"
+    return Path.home() / "Library" / "Application Support"
 
 
 def _app_dir_name() -> str:
     """打包变体的独立数据目录名；源码运行时回退到共享目录。
 
-    构建脚本（scripts/build_onedir.ps1）会在打包前生成
+    构建脚本（scripts/build_macos.sh）会在打包前生成
     packaging/build_variant.py（VARIANT = "webm-chat" 等），
     使 Chat / 无 Chat 等变体各自使用独立的配置目录、会话与自启项。
     """

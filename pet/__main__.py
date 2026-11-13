@@ -3,6 +3,11 @@
 
 import sys
 
+# 本应用仅支持 macOS：在一切 Qt/平台模块导入之前硬门禁（python -m pet 入口）。
+if sys.platform != "darwin":
+    print("本应用仅支持 macOS。")
+    sys.exit(1)
+
 # Qt 插件路径消毒必须早于任何 PySide6 导入（issue #323：外部 QT_PLUGIN_PATH
 # 会把旧版本插件 DLL 排在本应用自带插件之前，跨版本 ABI 冲突）
 from .qt_plugin_sanitizer import sanitize_plugin_path as _sanitize_plugin_path
