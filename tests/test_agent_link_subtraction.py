@@ -166,20 +166,18 @@ class _Win:
 
 @pytest.fixture()
 def sound_spy(monkeypatch):
-    """钉在播放漏斗层：winmm 直放 / Qt 后端 / 系统播放器全部经过这里。"""
+    """钉在播放漏斗层：Qt 后端 / 系统播放器全部经过这里。"""
     from pet import click_sound
     calls = []
     monkeypatch.setattr(click_sound._pool, "play_sound",
                         lambda path, volume=1.0: calls.append(("pool", path)) or True)
-    monkeypatch.setattr(click_sound._pool, "play_with_winmm",
-                        lambda path, volume=1.0: calls.append(("winmm", path)) or True)
     monkeypatch.setattr(click_sound._pool, "play_with_qt",
                         lambda path, volume=1.0: calls.append(("qt", path)) or True)
     return calls
 
 
 def test_link_sounds_silent_when_sound_disabled(tmp_path, monkeypatch, sound_spy):
-    """sound_enabled=False：start/done/error 全生命周期零声音（含 winmm 直放路径）。"""
+    """sound_enabled=False：start/done/error 全生命周期零声音（含 Qt 直放路径）。"""
     cfg = Config(base=tmp_path)
     cfg.data["agent_link"].update({
         "sound_enabled": False,

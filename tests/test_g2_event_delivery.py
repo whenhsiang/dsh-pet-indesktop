@@ -109,8 +109,8 @@ def harness(tmp_path, monkeypatch):
     monkeypatch.setattr(agent_link, "resolve_builtin_sound",
                         lambda p: (tmp_path / _SOUND_PATHS[str(p)])
                         if str(p) in _SOUND_PATHS else None)
-    # 音效钉在播放漏斗层（winmm 直放 / Qt 后端都逃不掉）
-    for fn in ("play_sound", "play_with_winmm", "play_with_qt"):
+    # 音效钉在播放漏斗层（Qt 后端 / 系统播放器都逃不掉）
+    for fn in ("play_sound", "play_with_qt"):
         monkeypatch.setattr(click_sound._pool, fn,
                             lambda path, volume=1.0: sounds.append(Path(path).name) or True)
     monkeypatch.setattr(harness_launcher, "is_running", lambda port: True)

@@ -72,23 +72,6 @@ def _mute_qt_audio(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _mute_winmm_audio(monkeypatch):
-    """winmm 直放后端在测试里必须"不可用"（对齐 _mute_qt_audio 的口径）。
-
-    pet/sound_winmm.py 是真实触碰声卡的路径：不拦的话，"设置里点试听"这类
-    用例会在跑测试时真的把 wav 交给 waveOut 发声，还会在无人值守 runner 上
-    打开真实音频设备。默认把默认后端置为不可用，产品代码因此走与改动前
-    逐位一致的 Qt 路径；要验证 winmm 语义的用例自行注入替身后端
-    （tests/test_winmm_sound.py 用 _new_winmm_pool / WinmmSoundPool(api=...)）。
-    """
-    try:
-        from pet import sound_winmm
-    except Exception:
-        return
-    monkeypatch.setattr(sound_winmm, "default_api", lambda: None)
-
-
-@pytest.fixture(autouse=True)
 def _reset_feature_activation_snapshot():
     """功能模块激活快照是进程级全局：走 main() 的用例会真冻结（全新目录 =
     新装纯核心 []），不回收会污染同进程后续全部用例（设置页模块行整批缺席，
@@ -212,12 +195,6 @@ def _clear_click_sound_pool():
         from pet import click_sound
         click_sound._pool.clear()
         click_sound._reset_caches_for_tests()
-    except Exception:
-        pass
-    # 用例可能自建 winmm 池（替身后端也持句柄/可选 timer）：一并收口。
-    try:
-        from pet import sound_winmm
-        sound_winmm._clear_live_pools_for_tests()
     except Exception:
         pass
 

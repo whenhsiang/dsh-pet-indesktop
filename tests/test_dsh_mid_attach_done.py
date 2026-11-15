@@ -113,7 +113,7 @@ def _make_rig(tmp_path, monkeypatch) -> _Rig:
         def _pick(self, lst):
             return lst[0]
 
-    # 音效钉在播放漏斗层（winmm 直放 / Qt 后端都逃不掉）
+    # 音效钉在播放漏斗层（Qt 后端 / 系统播放器都逃不掉）
     files = {}
     for value, name in (
         ("builtin:agent-start", "start.wav"),
@@ -124,7 +124,7 @@ def _make_rig(tmp_path, monkeypatch) -> _Rig:
         path.write_bytes(b"RIFF")
         files[value] = path
     monkeypatch.setattr(agent_link, "resolve_builtin_sound", lambda p: files.get(str(p)))
-    for fn in ("play_sound", "play_with_winmm", "play_with_qt"):
+    for fn in ("play_sound", "play_with_qt"):
         monkeypatch.setattr(click_sound._pool, fn,
                             lambda path, volume=1.0: sounds.append(Path(path).name) or True)
 
