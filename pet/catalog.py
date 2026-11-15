@@ -12,7 +12,6 @@ assets/thumb/*.webm（640×360 透明 webm，VP9 alpha）。
 
 import functools
 import logging
-import os
 import sys
 
 import json

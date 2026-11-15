@@ -123,6 +123,7 @@ def test_load_grouped_is_four_groups_and_newest_first(tmp_path):
             NOW + timedelta(minutes=2),
             NOW + timedelta(minutes=3),
             NOW + timedelta(minutes=4),
+            NOW + timedelta(minutes=5),  # 第 6 拍给 load 的读副本巡检（时间源已同源 clock）
         ]
     )
     mem = ChatMemory(tmp_path / "memory.json", clock=lambda: next(ticks))

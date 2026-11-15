@@ -629,9 +629,11 @@ class ChatMemory:
         老条目在返回的副本上补 ``layer=fact`` 与现场 bigram ``keywords``；
         **不写盘**，盘上文件保持原样（无迁移）。进程内已记录、尚未落盘的命中
         （``note_recalled`` 去抖窗口内的 ``last_hit_at``）在副本上先行生效。
+        副本巡检（超期 topic 标 archived）的时间源走 ``self._clock``，与写路径
+        同源——否则注入冻结时钟的测试里，读路径仍按真实墙钟判定超期。
         """
         entries = self._read_entries_strict()
-        moment = datetime.now().astimezone()
+        moment = self._clock()
         cached = _cached_hits(self.path)
         loaded: list[dict[str, Any]] = []
         for entry in entries or []:
