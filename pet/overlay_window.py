@@ -37,8 +37,6 @@ Phase 4 M-2：仿真推进（行为/碰撞/抛掷物理）与 tick 时钟、M-1 
 
 from __future__ import annotations
 
-import sys
-
 import shiboken6
 from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import QCursor, QPainter, QRegion, QScreen
@@ -56,12 +54,6 @@ from .platform_passthrough import QtPerPixelInputController
 from .sprite_menu import build_sprite_menu
 from .sprite_slingshot import SlingshotController
 from .tick_driver import TickDriver
-
-if sys.platform == "win32":
-    from .platform_win import (
-        _set_windows_no_activate,
-        _set_windows_non_rude_hwnd,
-    )
 
 # 命中阈值：alpha >= 16 视为不透明（与现架构 _is_transparent_at 同口径）
 ALPHA_HIT_THRESHOLD = 16
@@ -239,14 +231,6 @@ class OverlayWindow(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
-        # Windows：必须在原生窗显示之前剥夺 Shell 的「全屏应用」判定
-        # （issue #296）。overlay 铺满 screen.geometry()（含任务栏），会被
-        # rude window manager 当成全屏应用并把任务栏压到 z 序底部——4.3.0
-        # 默认 overlay 后表现为「启动桌宠，任务栏被普通窗口挡住」。属性挂在
-        # HWND 上：on_top 的 setWindowFlag 重建原生窗后丢失，靠下一次
-        # showEvent 重放（与下面 _set_windows_no_activate 同一条先例）。
-        if sys.platform == "win32":
-            _set_windows_non_rude_hwnd(int(self.winId()))
         # macOS：原生关掉 hidesOnDeactivate（issue #262 / #273）。Cocoa 失活时
         # order out 窗口的**真正判据**就是这个原生属性；Qt 属性
         # （__init__ 里已下发的 WA_MacAlwaysShowToolWindow）在部分系统版本上被
@@ -269,22 +253,16 @@ class OverlayWindow(QWidget):
             shown_cb()
         # O2：可见性上报（隐藏期停掉的光标探测在这里恢复，且立即补一次探测）
         overlay_peripherals.note_overlay_visibility(self, True)
-        if sys.platform == "win32":
-            # 点击宠物不夺前台焦点（issue #98 语义沿用）。每次显示都补一次：
-            # on_top 开关会重建原生窗口，新句柄不带 WS_EX_NOACTIVATE。
-            _set_windows_no_activate(int(self.winId()))
-        else:
-            # 非 Windows（X11/macOS）同一条逐像素穿透：落点是 Qt 属性
-            # WA_TransparentForMouseEvents + 原生输入穿透标志，判定与档位协议
-            # 与 Windows 控制器逐条相同（见 platform_passthrough 模块 docstring）。
-            # 这里此前没有任何穿透落点，整屏 overlay 就是一个整屏输入区——
-            # 桌面点击被整块吞掉（发布阻断项）。
-            if self._input_controller is None:
-                self._input_controller = QtPerPixelInputController(self)
-            # 首次创建与隐藏后恢复统一走 resume：同步收敛一次穿透态（首拍定时器
-            # 之前不留「整屏吞点击」窗口）+ 重开轮询表 + 排一次延迟对账（平台显示
-            # 阶段可能又重建了原生窗口，见 platform_passthrough._reconcile_after_show）。
-            self._input_controller.resume()
+        # 逐像素穿透（macOS）：落点是 Qt 属性 WA_TransparentForMouseEvents +
+        # 原生输入穿透标志，判定与档位协议见 platform_passthrough 模块 docstring。
+        # 这里此前没有任何穿透落点，整屏 overlay 就是一个整屏输入区——
+        # 桌面点击被整块吞掉（发布阻断项）。
+        if self._input_controller is None:
+            self._input_controller = QtPerPixelInputController(self)
+        # 首次创建与隐藏后恢复统一走 resume：同步收敛一次穿透态（首拍定时器
+        # 之前不留「整屏吞点击」窗口）+ 重开轮询表 + 排一次延迟对账（平台显示
+        # 阶段可能又重建了原生窗口，见 platform_passthrough._reconcile_after_show）。
+        self._input_controller.resume()
 
     def hideEvent(self, event) -> None:
         """隐藏期不轮询（O2）：不可见窗口不收输入，两条探测链路都是空转。

@@ -27,6 +27,11 @@
 ## 未完成（每批：T1 + T2 + ruff，绿→commit→push）
 - **6b-2** 穿透样式族：`_set_windows_click_through/_no_activate/_non_rude` +
   window.py(4102-4145) + overlay_window 剩余 win32 位点。
+- ✅ **6b-2**（本批）：穿透样式族——platform_win 删 click_through/no_activate/non_rude
+  三函数 + 对应常量；window.py 摘再导出、`_apply_windows_no_activate` 方法+调用点、
+  `_apply_effective_mouse_through` 的 nt 分支；overlay_window 摘 win32 导入块/
+  non_rude 位点/no_activate 分支（Qt 穿透路径去缩进保留）；删 2 个 win-only 用例。
+  T2 8569 passed。
 - **6b-3** 全屏探测族：probe 四函数 + window.py 委托方法(1389-1421) +
   multi_window_shared/overlay_shell/overlay_peripherals + island topmost 原生分支
   + test_island_topmost 手术。

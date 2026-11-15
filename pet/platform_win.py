@@ -21,11 +21,6 @@ GWL_STYLE = -16             # GetWindowLongW：取窗口样式
 GWL_EXSTYLE = -20           # GetWindowLongW：取扩展样式
 _WS_CAPTION = 0x00C00000    # WS_BORDER | WS_DLGFRAME（带标题栏）
 _WS_EX_TOPMOST = 0x00000008  # 置顶：真全屏游戏/视频几乎必带，普通最大化窗口不带
-_WS_EX_TRANSPARENT = 0x00000020
-# 不接收激活：鼠标点击不夺前台（issue #98）。工具窗口（Tool）不带该位时，
-# 点击桌宠会把它变成前台窗口，用户随后的键盘输入全部落到桌宠上，而桌宠不处理
-# Ctrl+C/Ctrl+V —— 观感就是"整机复制粘贴失效"，点回原窗口或退出桌宠才恢复。
-_WS_EX_NOACTIVATE = 0x08000000
 
 # ---- Win32：置顶重申（SetWindowPos）用常量 ----
 _HWND_TOPMOST = -1      # 插到 topmost 带最上（每次调用都重排，不只是置样式位）
@@ -33,10 +28,6 @@ _HWND_NOTOPMOST = -2
 _SWP_NOSIZE = 0x0001
 _SWP_NOMOVE = 0x0002
 _SWP_NOACTIVATE = 0x0010
-
-# ---- Win32：Shell「不是全屏应用」豁免用属性名 ----
-_NON_RUDE_PROP = "NonRudeHWND"
-
 
 class _WinRect(ctypes.Structure):
     _fields_ = [('left', ctypes.c_long), ('top', ctypes.c_long),
@@ -47,36 +38,6 @@ class _WinMonitorInfo(ctypes.Structure):
     """GetMonitorInfoW 的 MONITORINFO（只读 rcMonitor：显示器完整几何，物理像素）。"""
     _fields_ = [('cbSize', ctypes.c_ulong), ('rcMonitor', _WinRect),
                 ('rcWork', _WinRect), ('dwFlags', ctypes.c_ulong)]
-
-
-def _set_windows_click_through(hwnd: int, enabled: bool, user32=None) -> bool:
-    """切换 layered HWND 的输入穿透扩展样式。"""
-    user32 = user32 or ctypes.windll.user32
-    style = int(user32.GetWindowLongW(hwnd, GWL_EXSTYLE))
-    updated = style | _WS_EX_TRANSPARENT if enabled else style & ~_WS_EX_TRANSPARENT
-    if updated == style:
-        return False
-    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, updated)
-    return True
-
-
-def _set_windows_no_activate(hwnd: int, user32=None) -> bool:
-    """置位 WS_EX_NOACTIVATE：鼠标点击桌宠不再夺走前台/键盘焦点（issue #98）。
-
-    只影响"激活"：窗口照样收到鼠标与键盘消息（点击、拖拽、逐像素穿透判定都不
-    受影响，实测点击仍能进 mousePressEvent），但不会成为前台窗口，因此用户正在
-    编辑的应用保持前台与输入焦点——Ctrl+C/Ctrl+V 不会再落到桌宠上。
-
-    与改 flags 不同，这里只改扩展样式位，不重建原生窗口。
-    返回 True 表示本次真的改了样式。
-    """
-    user32 = user32 or ctypes.windll.user32
-    style = int(user32.GetWindowLongW(hwnd, GWL_EXSTYLE))
-    updated = style | _WS_EX_NOACTIVATE
-    if updated == style:
-        return False
-    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, updated)
-    return True
 
 
 def _set_windows_topmost(hwnd: int, on: bool, user32=None) -> bool:
@@ -109,33 +70,6 @@ def _set_windows_topmost(hwnd: int, on: bool, user32=None) -> bool:
         0, 0, 0, 0,
         _SWP_NOSIZE | _SWP_NOMOVE | _SWP_NOACTIVATE,
     ))
-
-
-def _set_windows_non_rude_hwnd(hwnd: int, user32=None) -> bool:
-    """告诉 Shell「本窗不是全屏应用」：任务栏不再被压到 z 序底部。
-
-    背景（issue #296）：Shell 的 "rude window manager" 按几何判定全屏应用——
-    铺满整块显示器的窗口会让任务栏移到 z 序底部，用户观感是「任务栏被所有
-    悬浮窗挡住」。overlay 合成窗铺满 ``screen.geometry()``（含任务栏），
-    4.3.0 默认 overlay 后高概率复现；4.2.1 的 legacy 小窗不受影响。
-
-    MS 文档（``ITaskbarList2::MarkFullscreenWindow`` Remarks）：自 Windows 7
-    起，``SetProp(hwnd, L"NonRudeHWND", HANDLE(TRUE))`` 可豁免该判定；它与
-    ``MarkFullscreenWindow(FALSE)`` 的差别是 Shell **不会**回落到自动检测。
-
-    **必须在窗口显示之前调用**（本机探针：Qt ``showEvent`` 时原生窗
-    ``IsWindowVisible=False``，满足前置条件）。属性挂在 HWND 上：
-    ``setWindowFlag`` 重建原生窗后丢失，靠下一次 ``showEvent`` 重放。
-
-    ``user32=None`` 时取真实 user32 并声明 argtypes——64 位下 HWND/HANDLE 是
-    指针，不声明会被 ctypes 默认 int32 截断成无效句柄（同
-    ``_set_windows_topmost`` 的 6ebfd2b 口径）。返回 API 是否成功。
-    """
-    if user32 is None:
-        user32 = ctypes.windll.user32
-        user32.SetPropW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.HANDLE]
-        user32.SetPropW.restype = wintypes.BOOL
-    return bool(user32.SetPropW(hwnd, _NON_RUDE_PROP, ctypes.c_void_p(1)))
 
 
 _FS_SKIP_CLASSES = {

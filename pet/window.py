@@ -101,9 +101,6 @@ from . import platform_win
 from .platform_mac import (
     _keep_macos_tool_window_visible, _mac_no_window_shadow_flag, _mac_set_window_level)
 from .platform_win import (
-    GWL_EXSTYLE as GWL_EXSTYLE,
-    _set_windows_click_through as _set_windows_click_through,
-    _set_windows_no_activate as _set_windows_no_activate,
     _fullscreen_geometry_hit as _fullscreen_geometry_hit,
     _fs_user_busy_state as _fs_user_busy_state,
     _fg_fullscreen_probe as _fg_fullscreen_probe,
@@ -1153,9 +1150,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
         # 原生窗口此刻已就绪：接线 DPR 变化信号（跨屏/显示缩放 → 强制重建）。
         # 幂等；QWindow 被重建后再次 show 会重挂到新 handle。
         self._arm_dpr_change_watch()
-        # 原生窗口此刻已就绪：置位 WS_EX_NOACTIVATE，点击桌宠不夺前台（issue #98）。
-        # 放在 showEvent 是因为改 flags / 重建原生窗口都可能丢掉扩展样式位。
-        self._apply_windows_no_activate()
         self._schedule_macos_window_level(bool(self.cfg.get('on_top', True)))
         self._apply_opacity()
         # 启动即登记 runtime 标记：否则没被拖动过的新生小肥鱼没有标记，
@@ -4063,31 +4057,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
         if self.movie is not None and hasattr(self.movie, 'set_playback_speed'):
             self.movie.set_playback_speed(self.playback_speed)
 
-    def _apply_windows_no_activate(self) -> None:
-        """Windows：置位 WS_EX_NOACTIVATE，点击桌宠不夺走前台（issue #98）。
-
-        现场症状：全局 Ctrl+C/Ctrl+V 失效（右键复制粘贴同样无效），退出桌宠后
-        恢复。根因是桌宠虽是 Tool 窗口但**可以**被点击激活——鼠标点击后它成为
-        前台窗口，用户随后的按键（含 Ctrl+C/Ctrl+V）全部投递给桌宠；而桌宠既不
-        处理这两个快捷键、也没有任何控件持有键盘焦点，于是观感就是"整机剪切板
-        坏了"。实测（SendInput 真实点击，跨进程）：修复前 fg=桌宠，修复后
-        fg 仍是用户原来的应用，且桌宠照样收到 press/release。
-
-        WS_EX_NOACTIVATE 只关掉"激活"：窗口仍接收鼠标/键盘消息（点击、拖拽、
-        逐像素穿透判定都照旧），但不会成为前台窗口，用户正在编辑的应用始终保有
-        输入焦点。代价是桌宠不再获得键盘焦点，弹弓的 ESC 取消随之失效（右键仍
-        可取消；focusOut 取消在"永不激活"下也不再触发）。
-
-        无原生 handle 的平台（offscreen 等）与异常一律静默跳过：这只是体验加固，
-        绝不能反过来影响启动。
-        """
-        if os.name != 'nt':
-            return
-        try:
-            _set_windows_no_activate(int(self.winId()))
-        except (AttributeError, OSError, RuntimeError):
-            logging.debug('置位 WS_EX_NOACTIVATE 失败', exc_info=True)
-
     def set_mouse_through(self, on: bool) -> None:
         """鼠标穿透：开启后桌宠不接收鼠标事件，点击会穿透到下层。"""
         self._user_mouse_through = bool(on)
@@ -4107,12 +4076,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
         if effective == self.mouse_through:
             return
         self.mouse_through = effective
-        if os.name == 'nt':
-            # 原生切 WS_EX_TRANSPARENT（等价 Qt 的 WindowTransparentForInput 但
-            # 不销毁重建原生窗口，杜绝频闪）；若日后窗口被其它路径重建丢了样式，
-            # 逐像素控制器 100Hz（10ms）轮询会按 self.mouse_through 收敛（platform_win）。
-            _set_windows_click_through(int(self.winId()), effective)
-            return
         was_visible = self.isVisible()  # setWindowFlag 重建原生窗口会先隐藏，
         self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, effective)
         if was_visible:

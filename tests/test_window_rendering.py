@@ -96,29 +96,6 @@ def test_is_transparent_at_uses_frame_alpha():
 
 
 
-def test_windows_click_through_preserves_other_extended_styles():
-    class FakeUser32:
-        def __init__(self):
-            self.style = 0x00080080  # WS_EX_LAYERED | WS_EX_TOOLWINDOW
-            self.writes = []
-
-        def GetWindowLongW(self, hwnd, index):
-            assert (hwnd, index) == (123, window_mod.GWL_EXSTYLE)
-            return self.style
-
-        def SetWindowLongW(self, hwnd, index, style):
-            self.style = style
-            self.writes.append((hwnd, index, style))
-
-    user32 = FakeUser32()
-    assert window_mod._set_windows_click_through(123, True, user32) is True
-    assert user32.style == 0x000800A0
-    assert window_mod._set_windows_click_through(123, True, user32) is False
-    assert len(user32.writes) == 1
-    assert window_mod._set_windows_click_through(123, False, user32) is True
-    assert user32.style == 0x00080080
-
-
 def test_visible_content_rect_uses_character_region():
     _qapp()
 
