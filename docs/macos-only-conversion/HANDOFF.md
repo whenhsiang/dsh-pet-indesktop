@@ -51,18 +51,25 @@
   的 android/keystore 段清理；`THIRD_PARTY_NOTICES` 删 §8（Android 第三方声明）
   与导言的 Android 两句。T2 8541 passed（−16 与删除测试对账一致）。
 
+- ✅ **2d**（本批）：`pr-test.yml` 收敛——删三平台矩阵（单 macos-latest + Python 3.13）、
+  Windows 分片步骤、Linux tee-sys/前缀诊断步骤；push 分支加 OnlyMacos（此后推送
+  即跑 CI）；保留 bridge 零依赖门/webm/frameseq 隔离步骤/崩溃面包屑。
+  `republish-assets.yml` 默认 globs 收敛为 macOS 资产；删 `scripts/ci_shards.py`。
+  YAML 校验通过。T2 8500 + webm 族串行 41 = 8541 passed，0 failed。
+
 ## 未完成（每批：T1 + T2 + ruff，绿→commit→push）
-- **2d** `pr-test.yml` 收敛：矩阵 macOS-only、shard 清单去已删文件、push 分支加
-  OnlyMacos、删 Linux 系统库步骤；检查 `republish-assets.yml`。
 - **3** README 删 Windows/Linux 章节；**4** docs/INDEX 处理非 macOS 文档
-  （ONEDIR_PACKAGING.md / ANDROID.md 等——注意 ANDROID.md 刚失去全部脚本引用），
+  （ONEDIR_PACKAGING.md / ANDROID.md 等——ANDROID.md 已失去全部脚本引用），
   按 INDEX 规则登记；**5** CHANGELOG 加 macOS-only 条目。
 - 待办池：空（bug/功能按「用户可感知 bug 优先」，登记类型/现象/期望/批次）。
 
 ## 验证协议
 - **T1 快门**（每批，~2 分钟）：`ruff check pet/ tests/` + `pytest --collect-only -q`
   + 引用方焦点测试。
-- **T2 全量并行**（默认，~1:50）：`.venv/bin/python -m pytest -q -n auto`，env：
+- **T2 全量并行**（默认，~1:50 + 串行族 30 秒）：`.venv/bin/python -m pytest -q -n auto
+  --ignore=tests/test_webm_reader_lifecycle.py --ignore=tests/test_webm_clip_lifecycle.py
+  --ignore=tests/test_webm_first_frame_lock.py`（webm 族在并行负载下会原生崩溃，
+  单独串行跑这三文件），env：
   `QT_QPA_PLATFORM=offscreen PYTHONUTF8=1 PYTHONIOENCODING=utf-8
   PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring`。
 - **T3 串行全量**（~12 分钟）：仅合并前、或触及 config/生命周期/线程/平台语义。

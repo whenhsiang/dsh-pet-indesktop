@@ -23,4 +23,7 @@
 - **删模块先全仓 collect-only**：14 秒枚举全部 import 断裂（比全量便宜两个数量级）。
 - **xdist 并行全量 7 倍提速**：8582 例 12:12→1:47 零失败 → 批次收口默认
   `-n auto`；时序族偶红先隔离复跑，连续 flake 才回串行；xdist 下进程级全局
-  按 worker 各一份。
+  按 worker 各一份。**必排除 webm 生命周期族**（reader/clip_lifecycle/
+  first_frame_lock）：并行负载下 xdist worker 会原生崩溃（`worker crashed`，
+  与 CI 记载的 reader+imageio 段错误同族），T2 用 `--ignore` 三文件后串行单跑
+  该族（41 例约 30 秒），合计即全量口径。
