@@ -34,7 +34,7 @@
 | [`LESSONS.md`](LESSONS.md) | 工程教训登记（活文档）：每条 = 日期 + 现象 + 对策，现有测试期禁编辑源码、文本替换咬缩进、注入时钟全覆盖、上游数据边界不钉死、xdist 提速口径等。 | 动手改代码前、做批量删除/脚本化文本替换/写时序测试前必读；踩到新坑先查有无同类条目再追加（AGENTS.md「Engineering lessons」节指向这里）。 |
 | [`macos-only-conversion/HANDOFF.md`](macos-only-conversion/HANDOFF.md) | macOS-only 改造工作交接（活文档，精简）：分支事实、已锁定决策、批次进度（8ad8589/847b21f/6a/6b-1 完成）、未完成批次（6b-2..6e、2a-2d、3-5）、验证协议 T1/T2/T3、测试环境、Git 约定。 | 恢复/接手 macOS-only 改造时第一份必读；每批收口后更新进度（保持精简，不写流水账）。 |
 | [`../CONTEXT.md`](../CONTEXT.md) | 领域术语表（Shared UX Contract / Settings System / Menu Action Model / Report Gate / Session-End Spawn Freeze 等）与禁用说法。 | 命名新概念、写设计文档、或需要确认"这个词在本项目里到底指什么"时；提案与既有术语冲突时必须先读。 |
-| [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) | 第三方素材、组件**与随包分发的第三方二进制**（如 `resources/presentmon/` 的帧率采集后端及其 MIT 原文）的授权声明；本文件本身随桌面三端产物（`_internal/`）与 APK 资产分发。 | 新增/替换动画素材、图标、字体、第三方库，或**把任何第三方二进制（含内置音效）随包分发**时（后者另有构建期的 sha256/架构门与 `--add-data` 接线守卫，见 [`ONEDIR_PACKAGING.md`](ONEDIR_PACKAGING.md) 第一、四节与 [`ANDROID.md`](ANDROID.md)）；素材制作与入库流程见 [`ASSET-PIPELINE.md`](ASSET-PIPELINE.md)，新素材的来源署名必须同步回本文。 |
+| [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md) | 第三方素材、组件**与随包分发的第三方二进制**（如 `resources/presentmon/` 的帧率采集后端及其 MIT 原文）的授权声明；本文件本身随 macOS .app 产物（`_internal/`）分发。 | 新增/替换动画素材、图标、字体、第三方库，或**把任何第三方二进制（含内置音效）随包分发**时（另有构建期的完整性门与 `--add-data` 接线守卫，历史说明见 [`ONEDIR_PACKAGING.md`](ONEDIR_PACKAGING.md)）；素材制作与入库流程见 [`ASSET-PIPELINE.md`](ASSET-PIPELINE.md)，新素材的来源署名必须同步回本文。 |
 
 ---
 
@@ -42,8 +42,7 @@
 
 | 文档 | 一句话内容 | 何时必读 |
 |---|---|---|
-| [`ANDROID.md`](ANDROID.md) | Android 0.2.1 原生悬浮桌宠的安装、工具链、音效试听、Q 弹留白、碰撞坐标、设置兼容与设备验收入口。 | 修改 Android 客户端、资源导出、SDK/Gradle 构建或准备手机测试包时必读。 |
-| [`ONEDIR_PACKAGING.md`](ONEDIR_PACKAGING.md) | onedir 打包流水线：绿色版 zip + Inno Setup 安装包，目标是运行期零解压、不产生 `_MEI` 缓存；含随包资产三块（`resources/presentmon/` 第三方后端、帧序列素材）各自的构建门与诚实边界，以及帧率采集权限为何不随包任何提权组件、`keyring` 为何四个变体都要带、`LICENSE`/`THIRD_PARTY_NOTICES.md` 怎么随包。 | **改 edge-tts 版本门禁、排查打包后语音失效、改 PyInstaller spec、打包资源、`--exclude-module`/`--collect-all`/`--add-data` 清单、或平台构建脚本（`scripts/build_onedir.ps1` / `build_macos.sh` / `build_linux.sh`）时必读**（AGENTS.md 口径）。**「no-chat 变体到底排掉了什么」以本文第四节为准**（2026-10-17 起只排 `pet.chat`）。 |
+| [`ONEDIR_PACKAGING.md`](ONEDIR_PACKAGING.md) | onedir 打包流水线：绿色版 zip + Inno Setup 安装包，目标是运行期零解压、不产生 `_MEI` 缓存；含随包资产三块（`resources/presentmon/` 第三方后端、帧序列素材）各自的构建门与诚实边界，以及帧率采集权限为何不随包任何提权组件、`keyring` 为何四个变体都要带、`LICENSE`/`THIRD_PARTY_NOTICES.md` 怎么随包。 | **改 edge-tts 版本门禁、排查打包后语音失效、改 PyInstaller spec、打包资源、`--exclude-module`/`--collect-all`/`--add-data` 清单、或平台构建脚本（`scripts/build_onedir.ps1` / `build_macos.sh` / `build_linux.sh`）时必读**（AGENTS.md 口径）。**「no-chat 变体到底排掉了什么」以本文第四节为准**（2026-10-17 起只排 `pet.chat`）。**基线警示（2026-11 macOS-only 收敛）：本文主体是 Windows（onedir zip + Inno Setup）时期的记录，`build_onedir.ps1`/`build_linux.sh` 已删除，打包流程以 `scripts/build_macos.sh` 与 DEV-HANDOVER §7 为准。** |
 | [`ASSET-PIPELINE.md`](ASSET-PIPELINE.md) | 动画素材流水线：素材在仓库里的位置与几何/清单约定（`body_box`、脚底 `y=330`）、参考项目「三件套」生成链（提示词绿幕规范 → 抠像/归一化 → 640×360 透明 WebM）、GIF 变体重生成、新角色入库流程与素材授权同步要求。 | **做/替换动画素材、跑 `scripts/convert_to_gif.py`、或新增角色入库时必读**；用户侧「换角色/热加载」在 [`../README.md`](../README.md)「动画素材与自定义角色」。 |
 | [`STABLE_BUILDS.md`](STABLE_BUILDS.md) | 稳定版构建冻结记录：受保护文件名、构建隔离规则、防止误覆盖稳定版产物。 | **改发布/构建工作流时必读**（AGENTS.md 口径）。注意其冻结对象是 onefile 时代的 `dist/*.exe`，现行发布形态已是 onedir（见文末过时清单）。 |
 | [`BUILD-CI-FAILURE-NOTES-2026-08.md`](BUILD-CI-FAILURE-NOTES-2026-08.md) | 三平台打包/CI 反复踩坑与最终解法汇总（持续更新）：脚本统一入口、资源漏收集、依赖只在叶子模块导入导致整族用例红等。 | CI 连续两轮红、或遇到"本机红 CI 绿"的依赖类假红时；动手重试之前先查这里是否已有同类记录。 |
@@ -278,6 +277,7 @@
 | 文档 | 一句话内容 | 何时必读 |
 |---|---|---|
 | [`DEV-HANDOVER.md`](DEV-HANDOVER.md) | 开发交接文档：本地运行、改配置、加功能、跑测试、重新打包的全流程，面向接手「语音报时」定制分支的开发者；**§10（2026-10-15 补录）是从 `README.md` 下沉的工程细节**——`pet/` 模块一览、Harness 启动器机制、性能与内存治理口径与键位、真实窗口人工验证清单，含 §7 打包流程与冒烟要求、§8 PR 流程与三份交付证据判定标准。 | 新人上手或需要一份"从零到跑起来"的完整流程时；查 README 不再保留的工程细节（模块职责、Harness 端口/反查口径、内存调节键）时也读它。正文一至九章的基线是 2026-09-16（行数/用例数按当时实测算），§10 基线为 2026-10-15。 |
+| [`CHANGELOG-MACOS-ONLY.md`](CHANGELOG-MACOS-ONLY.md) | **macOS-only 改造阶段变更记录**（2026-11，分支 `OnlyMacos`）：按批次列出删除/收敛内容（Android/PresentMon/winmm/平台层/CI/docs）、验证口径（T1/T2 全量数字）与已知残留。 | 追溯「macOS-only 改造做了哪些批、各自验证数字」时；细节进度见 [`macos-only-conversion/HANDOFF.md`](macos-only-conversion/HANDOFF.md)，教训见 [`LESSONS.md`](LESSONS.md)。 |
 | [`CHANGELOG-ARCHIVE-2026-10.md`](CHANGELOG-ARCHIVE-2026-10.md) | **变更记录存档（历史快照，已停止更新）**：从 `README.md` 下沉的 2026-08 起逐条变更记录（发布后补丁、#182 及更早的逐 PR 条目、v4.0.x 与 v3.1.1 的功能与踩坑）与 v4.0.0 历史亮点，正文逐字保留。 | 追溯「某个行为或修复是哪一批做的、当时怎么定位的」时；**引用某版本的正式说明时不要用它**——以 [`RELEASE-v4.3.1.md`](RELEASE-v4.3.1.md) / [`RELEASE-v4.3.0.md`](RELEASE-v4.3.0.md) / [`RELEASE-v4.2.1.md`](RELEASE-v4.2.1.md) / [`RELEASE-v4.2.0.md`](RELEASE-v4.2.0.md) 与 GitHub Releases 为准；新变更写进 `PR-REPORT-*.md` 与发布稿，不往存档里追加。 |
 | [`HANDOVER_2026-09.md`](HANDOVER_2026-09.md) | perf/stage-1 性能+结构线的交付手册（自带历史快照警示，含后续批次更正）。 | 追溯 perf/stage-1 那条线做了什么时；**正文数值已被后续批次更新**，实际以代码与 `_plan/current/` 档案为准。 |
 | [`PROJECT_HANDOFF.md`](PROJECT_HANDOFF.md) | 项目交接文档：主动识屏 + 多 Agent 联动时期的完整工作区状态、设计决策、遗留 TODO。 | 追溯识屏/联动落地时期的状态快照时；基线为 v3.1.1 / 194 passed，与现状差距较大。 |
@@ -322,6 +322,10 @@
 7. **`HANDOVER_2026-09.md`** — 自带两条历史快照警示（首帧缓存预算 32MB 已被改为 8MB；`decode_broker_enabled` 与 `decode_broker.py` 已移除，改为进程内 `DecodeFanoutHub`），正文描述已被取代。
 8. **`UPSTREAM-INTEGRATION-2026-08-26.md`** — 一次性合并记录，其"合并后有什么"的内容已被 `CHANGELOG-DEV-SINCE-v4.1.0-2026-09-09.md` 与 `RELEASE-v4.2.0.md` 完整覆盖；仅"维护边界"一节仍有独立价值。
 9. **`AGENT_LINK_LIVE_TEST.md`** — 面向一次性外部实机验证任务的说明书（工作区 `D:\dsh-pet-pr`、分支 `perf/startup-and-hidden-cpu`、基线 185 passed），任务场景已不存在。
+
+### 已删除（2026-11 macOS-only 收敛）
+
+- **`ANDROID.md`** — Android 客户端整树与 `scripts/{build_android,setup_android,export_android_assets,android_acceptance}.py|ps1` 已随 macOS-only 收敛删除（提交 `4acd5a8`），本行保留删除记录；历史内容可在 git 历史中追溯。
 
 ### 疑似重复
 

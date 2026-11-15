@@ -9,6 +9,8 @@ AIGC:
     ReservedCode2: 5WS8ZIlf31sY8kOZGi3OuLj7wtTR4orlRD+uQa4vpN/zbG9icu3IcPiWHfrwX3FNAnkDwfOlDoaC6pO5on6QU9u6BhQY8Zvk9FgkMQ7xBy5xT9qvgmVNFq1i/Rd205JLy3QoCQjQoilIbKr0n59e8Zxm5NeUzvEkLeDmjfwJRUMj8DxzCVnfPdOP0Hs=
 ---
 
+> **历史文档警示（2026-11 macOS-only 收敛）**：本文主体描述 Windows 平台（onedir zip + Inno Setup）时期的打包流水线；`scripts/build_onedir.ps1`、`build_linux.sh` 与 `build_windows.yml` 已删除，Inno Setup 脚本 `packaging/dsh-pet.iss` 已删除，`resources/presentmon/` 已移除。现行 macOS 打包流程见 `scripts/build_macos.sh` 与 [`DEV-HANDOVER.md`](DEV-HANDOVER.md) §7；本文仅作构建门设计（edge-tts collect、no-chat 变体排除项、编码自检等）的历史依据保留。
+
 # onedir 打包流水线（绿色版 zip + Inno Setup 安装包）
 
 Android 原生测试包使用独立 Gradle 工程，共用角色素材；其工具链、资源导出和

@@ -63,9 +63,14 @@
   小节保留「默认全空/修饰键/只有 Windows/三动作点名」——已按「本构建不注册」口径重写。
   T2 8500 + webm 族串行 41 = 8541 passed。
 
-## 未完成（每批：T1 + T2 + ruff，绿→commit→push）
-- **4** docs 处理非 macOS 文档（`ONEDIR_PACKAGING.md`、`ANDROID.md`、`BUILD-CI-FAILURE-NOTES`
-  等）按 `docs/INDEX.md` 规则登记/删除；**5** CHANGELOG 加 macOS-only 条目。
+- ✅ **4+5**（本批，主线收尾）：删 `docs/ANDROID.md`（android 整树已删）；
+  `ONEDIR_PACKAGING.md` 顶部加历史警示（Windows 时期流水线，构建门设计保留）；
+  INDEX 删 ANDROID 行、THIRD_PARTY 行去 APK 措辞、ONEDIR 行加基线警示、新增
+  「已删除（macOS-only 收敛）」小节；新增 `docs/CHANGELOG-MACOS-ONLY.md`（批次清单
+  + 验证口径 + 已知残留）并在 INDEX「变更汇总」登记。T2 8541 passed。
+
+## 未完成
+- **主线批次全部完成。** 剩余工作全部在下方「顺手做清单」（不排期）。
 - 待办池：空（bug/功能按「用户可感知 bug 优先」，登记类型/现象/期望/批次）。
 
 ## 顺手做清单（2026-11-15 用户决定：不单独排期；改到对应功能时一并做，
