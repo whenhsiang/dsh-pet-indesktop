@@ -57,11 +57,27 @@
   `republish-assets.yml` 默认 globs 收敛为 macOS 资产；删 `scripts/ci_shards.py`。
   YAML 校验通过。T2 8500 + webm 族串行 41 = 8541 passed，0 failed。
 
+- ✅ **3**（本批）：README 768→~580 行收敛为 macOS-only——删 Windows 安装/绿色版、
+  Linux 节、Android 段、onefile 清理节、主动识屏节、音乐播放器路径节、直播捕获节；
+  下载表/数据目录/角色扫描表/已知限制/反馈/开发者命令同步改写。守门测试要求快捷键
+  小节保留「默认全空/修饰键/只有 Windows/三动作点名」——已按「本构建不注册」口径重写。
+  T2 8500 + webm 族串行 41 = 8541 passed。
+
 ## 未完成（每批：T1 + T2 + ruff，绿→commit→push）
-- **3** README 删 Windows/Linux 章节；**4** docs/INDEX 处理非 macOS 文档
-  （ONEDIR_PACKAGING.md / ANDROID.md 等——ANDROID.md 已失去全部脚本引用），
-  按 INDEX 规则登记；**5** CHANGELOG 加 macOS-only 条目。
+- **4** docs 处理非 macOS 文档（`ONEDIR_PACKAGING.md`、`ANDROID.md`、`BUILD-CI-FAILURE-NOTES`
+  等）按 `docs/INDEX.md` 规则登记/删除；**5** CHANGELOG 加 macOS-only 条目。
 - 待办池：空（bug/功能按「用户可感知 bug 优先」，登记类型/现象/期望/批次）。
+
+## 顺手做清单（2026-11-15 用户决定：不单独排期；改到对应功能时一并做，
+## 独立提交 + T1/T2 验证，不与功能改动混 diff）
+- 6e 散落 if/else 死分支：window.py、webm_clip.py、session_watcher.py、
+  config_write_lock.py、chat/session_store.py、harness_launcher.py、
+  frameseq_provision.py、updater.py、tts/doubao.py（改到哪个顺手删哪个）。
+- 6d-2 game_fps / fps_monitor / fps_permission 整链（涉岛屿「游戏帧率」段 UI，功能级决策）。
+- 设置页「互动 · 快捷键」页签永久禁用——动设置页时评估整页移除。
+- 被删模块的 test_architecture 删除守卫，随各自顺手批补。
+- `scripts/cleanup_mei_cache.py` + `test_cleanup_mei_cache_cli.py`（Windows onefile 时代的
+  临时目录清理工具，README 章节已删）——下次动 scripts/ 时一并评估删除。
 
 ## 验证协议
 - **T1 快门**（每批，~2 分钟）：`ruff check pet/ tests/` + `pytest --collect-only -q`
