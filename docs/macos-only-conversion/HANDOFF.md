@@ -40,19 +40,30 @@
   （缺二进制/非 Windows 时按「不支持」优雅降级；macOS 构建本就不含该目录）。
   T2 8557 passed。
 
+- ✅ **2a+2b**（本批）：requirements.txt 剪除 Windows/Linux 专属（pywin32-ctypes /
+  pycaw / winrt-*×5 / PySide6 linux 钉版），收敛为单条 `PySide6>=6.5`；删
+  `packaging/dsh-pet.iss`（Windows 安装器）。测试守卫确认：平台不可导入的模块在
+  test_runtime_dependencies 里跳过，psutil 有 net_monitor/sys_monitor 等跨平台消费者故保留。
+  T2 8557 passed。
+
 ## 未完成（每批：T1 + T2 + ruff，绿→commit→push）
-- **6d-2（待定，功能级）**：game_fps / fps_monitor / fps_permission 链路是否整链移除——
-  涉及灵动岛「游戏帧率」段的 UI 与状态机，属功能删减需用户拍板；当前保留优雅降级。
-- **6e** 散落死分支（window.py、webm_clip、
-  session_watcher、config_write_lock、chat/session_store、harness_launcher、
-  frameseq_provision、updater、tts/doubao）+ test_architecture 删除守卫。
-- **2a** requirements 剪除（pywin32-ctypes/pycaw/winrt×5/linux 钉版）；
-  **2b** `packaging/dsh-pet.iss`；**2c** android 脚本 + 2 测试 + .gitignore 段；
-  **2d** `pr-test.yml` 收敛（矩阵 macOS-only、shard 去已删文件、push 分支加
-  OnlyMacos）；**3** README；**4** docs/INDEX 处理；**5** CHANGELOG。
-- 可选 UX 批次：设置页「互动 · 快捷键」页签在 macOS-only 下永久禁用（`is_supported()`
-  恒 False）——整页签是否移除待定（涉及 settings_interaction/搜索别名/文案 lint 多处）。
+- **2c** android 工具尾巴：删 `scripts/build_android.ps1`、`setup_android.ps1`、
+  `export_android_assets.py`、`android_acceptance.py` + `tests/test_android_acceptance.py`、
+  `test_android_assets.py` + `.gitignore` 的 android 段。
+- **2d** `pr-test.yml` 收敛：矩阵 macOS-only、shard 清单去已删文件、push 分支加
+  OnlyMacos、删 Linux 系统库步骤；检查 `republish-assets.yml`。
+- **3** README 删 Windows/Linux 章节；**4** docs/INDEX 处理非 macOS 文档
+  （ONEDIR_PACKAGING 等，按 INDEX 规则登记）；**5** CHANGELOG 加 macOS-only 条目。
 - 待办池：空（bug/功能按「用户可感知 bug 优先」，登记类型/现象/期望/批次）。
+
+## 顺手做清单（2026-11-15 用户决定：不单独排期；改到对应功能时一并做，
+## 独立提交 + T1/T2 验证，不与功能改动混 diff）
+- 6e 散落 if/else 死分支：window.py、webm_clip.py、session_watcher.py、
+  config_write_lock.py、chat/session_store.py、harness_launcher.py、
+  frameseq_provision.py、updater.py、tts/doubao.py（改到哪个顺手删哪个）。
+- 6d-2 game_fps / fps_monitor / fps_permission 整链（涉岛屿「游戏帧率」段 UI，功能级决策）。
+- 设置页「互动 · 快捷键」页签永久禁用（`is_supported()` 恒 False）——动设置页时评估整页移除。
+- 被删模块的 test_architecture 删除守卫，随各自顺手批补。
 
 ## 验证协议
 - **T1 快门**（每批，~2 分钟）：`ruff check pet/ tests/` + `pytest --collect-only -q`
