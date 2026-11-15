@@ -372,23 +372,6 @@ def _cfg_dict(config) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def _native_reassert_topmost(window) -> bool:
-    """Windows：把窗口原生重插到 topmost 带最上（不激活/不移动/不改大小）。
-
-    非 Windows 一律返回 ``False``。macOS 的 NSWindow level 与 Windows 的
-    topmost 带不是一回事，不能把 Qt ``raise_()`` 当成安全回退。
-    """
-    if sys.platform != "win32":
-        return False
-    try:
-        from ..platform_win import _set_windows_topmost
-
-        return bool(_set_windows_topmost(int(window.winId()), True))
-    except Exception:
-        logger.debug("灵动岛原生置顶重申失败", exc_info=True)
-        return False
-
-
 @dataclass(frozen=True)
 class _CardMetricRow:
     """卡片 B 区一行（指标详情）——**数据不是绘制串**，三列文案一次算清。
@@ -880,8 +863,6 @@ class DynamicIsland(QWidget):
         """
         if not self.isVisible():
             return False
-        if _native_reassert_topmost(self):
-            return True
         # macOS 上 QWidget.raise_() 会激活 accessory 应用，把用户正在输入的
         # 主窗口切走；WindowStaysOnTopHint 已由 Cocoa 负责维持，不再用 Qt
         # raise_() 重排窗口。这个分支必须在真实 macOS 上保持无副作用。

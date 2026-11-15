@@ -97,15 +97,8 @@ from .click_sound import (
 from .proactive import effective_proactive_config
 from .window_optional_services import WindowFeatureGateMixin
 
-from . import platform_win
 from .platform_mac import (
     _keep_macos_tool_window_visible, _mac_no_window_shadow_flag, _mac_set_window_level)
-from .platform_win import (
-    _fullscreen_geometry_hit as _fullscreen_geometry_hit,
-    _fs_user_busy_state as _fs_user_busy_state,
-    _fg_fullscreen_probe as _fg_fullscreen_probe,
-    _fg_fullscreen_win32 as _fg_fullscreen_win32,
-)
 
 # 后台播放音乐时自动播放的唱歌/哼歌动画
 SING_ANIM = '悠闲哼歌'
@@ -1375,40 +1368,9 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
             except Exception:
                 pass
 
-    @staticmethod
-    def _fullscreen_geometry_hit(l: float, t: float, r: float, b: float,
-                                 geom, has_caption: bool, topmost: bool = False) -> bool:
-        """覆盖整屏几何，且（无标题栏 或 置顶）= 真全屏。
-
-        实现已搬至 pet/platform_win.py（批 6-3），此处为兼容性薄委托。
-        """
-        return platform_win._fullscreen_geometry_hit(
-            l, t, r, b, geom, has_caption, topmost)
-
-    # ------------------------------------------------------------------
-    # 全屏 watcher：后台线程轮询（纯 win32，线程安全）+ 信号回主线程
-    # ------------------------------------------------------------------
-    def _fg_fullscreen_win32(self) -> bool:
-        """前台窗口是否真全屏。仅返回布尔值，诊断细节见 _fg_fullscreen_probe。
-
-        实现已搬至 pet/platform_win.py（批 6-3），此处为兼容性薄委托。
-        """
-        return platform_win._fg_fullscreen_win32()
-
-    @staticmethod
-    def _fs_user_busy_state() -> tuple[bool, int]:
-        """SHQueryUserNotificationState：Windows 自报的全屏/演示忙状态。
-
-        实现已搬至 pet/platform_win.py（批 6-3），此处为兼容性薄委托。
-        """
-        return platform_win._fs_user_busy_state()
-
     def _fg_fullscreen_probe(self) -> tuple[bool, str]:
-        """前台窗口全屏探测，返回 (是否全屏, 诊断描述)。
-
-        实现已搬至 pet/platform_win.py（批 6-3），此处为兼容性薄委托。
-        """
-        return platform_win._fg_fullscreen_probe()
+        """前台窗口全屏探测（macOS 无原生实现：恒不命中，legacy watcher 保持静默）。"""
+        return False, ""
 
     def _start_fs_watch(self, *args, **kwargs):
         """Compatibility delegation (window_screen.start_fs_watch)."""

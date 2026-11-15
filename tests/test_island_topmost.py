@@ -29,7 +29,6 @@ from PySide6.QtCore import QEvent, QPoint, QPointF, Qt
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
-from pet import platform_win
 from pet.config import Config
 from pet.island.dynamic_island import DynamicIsland
 
@@ -52,17 +51,22 @@ def _settle(app: QApplication, rounds: int = 3) -> None:
 
 
 def _spy_native_reassert(monkeypatch) -> list:
-    """监视岛调用平台层原生重申的 seam（记录被重申的窗口）。
+    """监视岛的重申入口（记录被重申的可见岛实例）。
 
-    ``raising=False``：产品改动前该 seam 不存在，此时监视表为空——测试以
-    「重申没有被触发」的断言失败作为红，而不是 ImportError。
+    原生 seam（``_native_reassert_topmost``）已随 macOS-only 收敛移除；触发点
+    接线改在公开入口 ``reassert_topmost`` 上验——隐藏态由入口自身的可见性门挡掉。
     """
-    from pet.island import dynamic_island as island_mod
+    from pet.island.dynamic_island import DynamicIsland
 
     calls: list = []
-    monkeypatch.setattr(
-        island_mod, "_native_reassert_topmost",
-        lambda window: (calls.append(window), True)[1], raising=False)
+
+    def _fake(self):
+        if not self.isVisible():
+            return False
+        calls.append(self)
+        return True
+
+    monkeypatch.setattr(DynamicIsland, "reassert_topmost", _fake)
     return calls
 
 
@@ -223,43 +227,3 @@ def test_island_keeps_topmost_and_non_activating_flags(tmp_path):
     assert flags & Qt.WindowType.WindowDoesNotAcceptFocus
     assert island.testAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
 
-
-class _FakeSetWindowPos:
-    """可注入的 SetWindowPos 替身（要能吃 argtypes/restype 赋值，故用可调用对象）。"""
-
-    def __init__(self, sink: list, result: int = 1) -> None:
-        self._sink = sink
-        self._result = result
-        self.argtypes = None
-        self.restype = None
-
-    def __call__(self, *args):
-        self._sink.append(args)
-        return self._result
-
-
-class _FakeUser32:
-    def __init__(self, result: int = 1) -> None:
-        self.calls: list = []
-        self.SetWindowPos = _FakeSetWindowPos(self.calls, result)
-
-
-def test_set_windows_topmost_posts_topmost_flag_without_activating():
-    user32 = _FakeUser32()
-    assert platform_win._set_windows_topmost(123, True, user32) is True
-    assert user32.calls == [(
-        123, platform_win._HWND_TOPMOST, 0, 0, 0, 0,
-        platform_win._SWP_NOSIZE | platform_win._SWP_NOMOVE
-        | platform_win._SWP_NOACTIVATE,
-    )]
-
-
-def test_set_windows_topmost_off_demotes_to_notopmost():
-    user32 = _FakeUser32()
-    assert platform_win._set_windows_topmost(123, False, user32) is True
-    assert user32.calls[0][1] == platform_win._HWND_NOTOPMOST
-
-
-def test_set_windows_topmost_reports_api_failure():
-    user32 = _FakeUser32(result=0)
-    assert platform_win._set_windows_topmost(123, True, user32) is False

@@ -5003,11 +5003,6 @@ class OverlayShell(QObject):
         # 诊断留痕：探测翻转时记录判定原因（2026-09-23 实机抓到 1Hz 翻转，
         # 无原因无法归因——probe 的 why 串本来就有，只差落日志）
         why = ""
-        try:
-            from . import platform_win
-            why = platform_win._fg_fullscreen_probe()[1]
-        except Exception:
-            pass
         logging.info("overlay: 全屏状态变化 hit=%s auto_hidden=%s why=%s",
                      hit, self._auto_hidden, why)
         # 免打扰（issue #208）：全屏 = 等效免打扰的唯一来源（与 legacy 的

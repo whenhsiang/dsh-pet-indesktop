@@ -35,6 +35,13 @@
 - **6b-3** 全屏探测族：probe 四函数 + window.py 委托方法(1389-1421) +
   multi_window_shared/overlay_shell/overlay_peripherals + island topmost 原生分支
   + test_island_topmost 手术。
+- ✅ **6b-3**（本批）：全屏探测族——platform_win 删 probe 四函数/`_set_windows_topmost`/
+  常量/结构体（文件只剩热键原语）；window.py 摘 4 个委托方法+再导出，保留
+  `_fg_fullscreen_probe` 恒不命中薄方法（legacy watcher 静默）；mws 的
+  `_probe_fullscreen` 改恒 False（与旧异常兜底等价）；overlay_peripherals 删
+  win32 分支；overlay_shell 删 why 探针；island 删 `_native_reassert_topmost`。
+  测试：删 3 个 native topmost 用例+几何判定用例，间谍夹具改装公开入口。
+  T2 8565 passed。
 - **6b-4** 热键族：hotkeys `GlobalHotkeyService`（`is_supported()=os.name=="nt"`，
   先确认 app.py 创建点）+ `platform_win.py` 模块删除收尾。
 - **6c** proactive win32 路径；**6d** `resources/presentmon/` + `verify_presentmon.py`
@@ -73,6 +80,7 @@
 ## 已知残留（docstring/注释级，零行为，勿当缺陷）
 - agent_link:3196、settings_standalone:10、overlay_shell:3981/5007、sprite_sound×4、
   bridge:612、platform_passthrough×3、application_icon:14、若干测试注释。
+- test_island_topmost 模块 docstring 仍提及 `platform_win._set_windows_topmost`（文字级）。
 - 有意的损失：8 个打包守卫测试（含 macOS 变体断言）随删；
   `scripts/check_frameseq_bundle.py` 本体仍在并被 build_macos.sh 调用。
 

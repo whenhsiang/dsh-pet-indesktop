@@ -5,7 +5,7 @@
 on_fullscreen_changed / on_cursor_visibility_changed 与 multi_window_shared
 的探测节拍），只是消费者从 PetWindow 换成 OverlayShell：
 
-- 全屏探测 1Hz（platform_win._fg_fullscreen_probe）：前台出现全屏应用 →
+- 全屏探测 1Hz（由注入的 fullscreen_probe 提供；macOS 无原生探测恒不命中）：前台出现全屏应用 →
   隐藏 overlay；退出 → 恢复。配置门 auto_hide_fullscreen（默认 True）。
 - 光标可见性 20Hz（vision.get_cursor_visibility）：HIDDEN 持续 ≥0.2s →
   自动穿透（游戏/全屏应用抢走光标时让出鼠标）；SHOWING → 恢复。
@@ -19,7 +19,6 @@ on_fullscreen_changed / on_cursor_visibility_changed 与 multi_window_shared
 from __future__ import annotations
 
 import logging
-import sys
 import time
 import weakref
 
@@ -109,13 +108,6 @@ class FullscreenCursorWatcher(QObject):
                  overlay_visibility: OverlayVisibilityGate | None = None) -> None:
         super().__init__(parent)
         self._clock = clock
-        if fullscreen_probe is None or cursor_probe is None:
-            if sys.platform == "win32":
-                from . import platform_win
-                from . import vision
-                fullscreen_probe = fullscreen_probe or (
-                    lambda: platform_win._fg_fullscreen_probe()[0])
-                cursor_probe = cursor_probe or vision.get_cursor_visibility
         self._fullscreen_probe = fullscreen_probe or (lambda: False)
         self._cursor_probe = cursor_probe or (lambda: "UNKNOWN")
         self._overlay_visibility = (

@@ -27,7 +27,6 @@ import weakref
 from PySide6.QtCore import QObject, Signal
 
 from . import feature_activation
-from . import platform_win
 from . import quiet_mode
 from . import vision as vision_mod
 from . import window_alerts
@@ -475,19 +474,8 @@ class SharedFullscreenWatcher(QObject):
             for w in self._windows())
 
     def _probe_fullscreen(self) -> bool:
-        try:
-            hit, detail = platform_win._fg_fullscreen_probe()
-            if hit != self._fs_last:
-                self._fs_last = hit
-                log.info("共享全屏检测变化 hit=%s (%s)", hit, detail)
-                self.fullscreen_changed.emit(hit)
-            elif self._fs_polls % 15 == 0:
-                log.info("共享全屏检测心跳 hit=%s %s", hit, detail)
-            self._fs_polls += 1
-            return hit
-        except Exception:
-            log.exception("共享全屏检测异常")
-            return False
+        """共享全屏探测（macOS 无原生前台探测：恒不命中，与旧异常兜底行为一致）。"""
+        return False
 
     def _poll_cursor(self) -> None:
         try:
