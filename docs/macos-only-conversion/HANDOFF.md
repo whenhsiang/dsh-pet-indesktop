@@ -46,24 +46,18 @@
   test_runtime_dependencies 里跳过，psutil 有 net_monitor/sys_monitor 等跨平台消费者故保留。
   T2 8557 passed。
 
+- ✅ **2c**（本批）：android 工具尾巴删除——`scripts/build_android.ps1`、`setup_android.ps1`、
+  `export_android_assets.py`、`android_acceptance.py` + 两个对应测试；`.gitignore`
+  的 android/keystore 段清理；`THIRD_PARTY_NOTICES` 删 §8（Android 第三方声明）
+  与导言的 Android 两句。T2 8541 passed（−16 与删除测试对账一致）。
+
 ## 未完成（每批：T1 + T2 + ruff，绿→commit→push）
-- **2c** android 工具尾巴：删 `scripts/build_android.ps1`、`setup_android.ps1`、
-  `export_android_assets.py`、`android_acceptance.py` + `tests/test_android_acceptance.py`、
-  `test_android_assets.py` + `.gitignore` 的 android 段。
 - **2d** `pr-test.yml` 收敛：矩阵 macOS-only、shard 清单去已删文件、push 分支加
   OnlyMacos、删 Linux 系统库步骤；检查 `republish-assets.yml`。
 - **3** README 删 Windows/Linux 章节；**4** docs/INDEX 处理非 macOS 文档
-  （ONEDIR_PACKAGING 等，按 INDEX 规则登记）；**5** CHANGELOG 加 macOS-only 条目。
+  （ONEDIR_PACKAGING.md / ANDROID.md 等——注意 ANDROID.md 刚失去全部脚本引用），
+  按 INDEX 规则登记；**5** CHANGELOG 加 macOS-only 条目。
 - 待办池：空（bug/功能按「用户可感知 bug 优先」，登记类型/现象/期望/批次）。
-
-## 顺手做清单（2026-11-15 用户决定：不单独排期；改到对应功能时一并做，
-## 独立提交 + T1/T2 验证，不与功能改动混 diff）
-- 6e 散落 if/else 死分支：window.py、webm_clip.py、session_watcher.py、
-  config_write_lock.py、chat/session_store.py、harness_launcher.py、
-  frameseq_provision.py、updater.py、tts/doubao.py（改到哪个顺手删哪个）。
-- 6d-2 game_fps / fps_monitor / fps_permission 整链（涉岛屿「游戏帧率」段 UI，功能级决策）。
-- 设置页「互动 · 快捷键」页签永久禁用（`is_supported()` 恒 False）——动设置页时评估整页移除。
-- 被删模块的 test_architecture 删除守卫，随各自顺手批补。
 
 ## 验证协议
 - **T1 快门**（每批，~2 分钟）：`ruff check pet/ tests/` + `pytest --collect-only -q`

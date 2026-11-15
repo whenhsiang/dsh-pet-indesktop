@@ -70,16 +70,6 @@ packaging/build_variant.py
 node_modules/
 dist-onedir-alt/
 
-# Android tools, signing material, and generated outputs
-android/.gradle/
-android/.kotlin/
-android/hs_err_pid*.log
-android/local.properties
-android/**/build/
-*.keystore
-*.jks
-dist-android/
-
 # 素材包构建产物（发布门输出，发布到 Release 后即可删）
 dist-packs/
 
