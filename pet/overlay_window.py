@@ -59,7 +59,6 @@ from .tick_driver import TickDriver
 
 if sys.platform == "win32":
     from .platform_win import (
-        WindowsPerPixelInputController,
         _set_windows_no_activate,
         _set_windows_non_rude_hwnd,
     )
@@ -271,14 +270,6 @@ class OverlayWindow(QWidget):
         # O2：可见性上报（隐藏期停掉的光标探测在这里恢复，且立即补一次探测）
         overlay_peripherals.note_overlay_visibility(self, True)
         if sys.platform == "win32":
-            if self._input_controller is None:
-                # 逐像素穿透：未命中任何 sprite 的屏幕区域点击直达下层应用——
-                # 全屏 overlay 不抢占桌面交互（硬指标"体验不回退"的底线）。
-                self._input_controller = WindowsPerPixelInputController(self)
-            else:
-                # 隐藏期停过表：重开轮询并立即收敛一次穿透态（显示后不能有
-                # 一段时间按陈旧样式吞点击）。
-                self._input_controller.resume()
             # 点击宠物不夺前台焦点（issue #98 语义沿用）。每次显示都补一次：
             # on_top 开关会重建原生窗口，新句柄不带 WS_EX_NOACTIVATE。
             _set_windows_no_activate(int(self.winId()))

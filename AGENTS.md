@@ -157,6 +157,13 @@ after — timers/threads/hotkeys/precaches stay off). Gating tests:
 - Keep QLocal test server names short. POSIX converts names to Unix socket paths,
   whose limit includes the system temporary-directory prefix.
 
+## Engineering lessons（工程教训登记）
+
+逐条踩坑实录与对策登记在 `docs/LESSONS.md`（本文不复述正文，冲突时以本文纪律
+为准）。动手改代码前——尤其做批量删除、脚本化文本替换、给类注入 clock/探针、
+写时序测试——先读它；每次踩到新坑，把「日期 + 现象 + 对策」追加进去（先搜有
+无同类条目），并在 HANDOFF / PR 报告的教训小节回链。
+
 ## Delivery evidence discipline (2026-09-22 起，硬要求)
 
 每个 PR 必须交付**三份证据**，缺一即视为未完成，审查时按缺陷提出

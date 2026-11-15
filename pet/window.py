@@ -104,7 +104,6 @@ from .platform_win import (
     GWL_EXSTYLE as GWL_EXSTYLE,
     _set_windows_click_through as _set_windows_click_through,
     _set_windows_no_activate as _set_windows_no_activate,
-    WindowsPerPixelInputController as WindowsPerPixelInputController,
     _fullscreen_geometry_hit as _fullscreen_geometry_hit,
     _fs_user_busy_state as _fs_user_busy_state,
     _fg_fullscreen_probe as _fg_fullscreen_probe,
@@ -621,9 +620,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
         # showEvent 接线，closeEvent 摘线。
         self._dpr_watch_window = None
         self._dpr_watch_screen = None
-        self._input_controller: WindowsPerPixelInputController | None = None
-        if os.name == "nt":
-            self._input_controller = WindowsPerPixelInputController(self)
         # 窗口隐藏时暂停动画解码/定时器；显示时由 showEvent 恢复
         self._hidden_paused = False
         self._ended_fired = False
@@ -2948,7 +2944,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
         self._grab_offset = None
         self._dragging = False
         self._clear_drag_move()  # 合帧目标已在 _enter_slingshot 冲掉，这里兜底
-        self._sync_drag_polling(False)
         self._update_interaction_hold()  # 弹弓发射/取消回锚点：左键已释放 → 让路释放
 
     def _start_slingshot_rebound(self, progress: float) -> None:
@@ -3075,19 +3070,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
         self._click_hold = False
         self._context_menu_open = False
         self._set_interaction_hold(False)
-        # 拖拽降频对称恢复（全审 P2-3）：按下时已 set_drag_active(True) 把
-        # 穿透轮询降频到 100ms，隐藏/关闭打断拖拽后必须恢复 10ms 原频率并
-        # 强制刷新一次穿透状态——否则滞留拖拽节奏直到下一次完整按-放循环
-        # （re-show 后穿透状态更新延迟 10 倍且缺一次强制刷新）。非拖拽态
-        # 重复调用是 no-op（platform_win.set_drag_active 已保证），安全。
-        self._sync_drag_polling(False)
-
-    def _sync_drag_polling(self, active: bool) -> None:
-        """Windows 逐像素穿透轮询随拖拽按下/松手降频/恢复（非 Windows 无控制器，no-op）。"""
-        ctrl = self._input_controller
-        if ctrl is not None:
-            ctrl.set_drag_active(active)
-
     def _schedule_drag_move(self, target: QPoint) -> None:
         """普通拖拽合帧：只记录最新目标位置，由 ~120Hz timer 消费。
 
@@ -3167,7 +3149,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
                 event.accept()
                 return
             self._press_global = event.globalPosition().toPoint()
-            self._sync_drag_polling(True)
             self._interaction_state = "PRESS_CANDIDATE"
             # 抓取偏移必须用虚拟窗口坐标系：贴边状态下窗口被钳在工作区内、
             # 角色靠绘制偏移贴边，若用实际窗口位置，拖拽一开始角色就会
@@ -3211,7 +3192,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
                 # 取消按压状态，松手仍按点击处理。
                 self._press_global = None
                 self._grab_offset = None
-                self._sync_drag_polling(False)
                 self._update_interaction_hold()  # 未按 SHIFT 取消按压 → 释放让路
                 return
             self._dragging = True
@@ -3336,7 +3316,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
         self._press_global = None
         self._lock_press_active = False
         self._grab_offset = None
-        self._sync_drag_polling(False)
         if self._cursor_restore_pending or self._cursor_visibility == 'SHOWING':
             self._cursor_restore_pending = False
             self._auto_cursor_hidden = False
@@ -4159,7 +4138,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
             self._dragging = False
             self._press_global = None
             self._grab_offset = None
-            self._sync_drag_polling(False)
             self._stop_physics()
         self._update_interaction_hold()  # 拖拽被锁定位置打断 → 释放让路
 
@@ -4529,9 +4507,6 @@ class PetWindow(QWidget, WindowFeatureGateMixin):
         self._disarm_screen_restore_retry()  # 窗口销毁前摘掉 screenAdded 监听/超时回调
         self._stop_fs_watch()
         self.detach_decode_sessions()
-        if self._input_controller is not None:
-            self._input_controller.stop()
-            self._input_controller = None
         # 不在这里覆盖记忆位置：避免自动移动/抛掷后的随机终点被存下来。
         # 关闭即停掉全部活动定时器（含待重试被拒动画、移动/挤压/物理/唱歌），
         # 否则 win.close() 只隐藏不销毁窗口，残留单次 timeout 会在后续测试的

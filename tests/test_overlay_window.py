@@ -500,37 +500,6 @@ def test_press_global_and_drag_polling_protocol():
     assert fake_ctl.drag_states == [True, False]      # 松手恢复 10ms 轮询
 
 
-def test_windows_per_pixel_controller_integration():
-    import sys
-
-    if sys.platform != "win32":
-        import pytest
-
-        pytest.skip("WindowsPerPixelInputController 仅 Windows")
-    from pet.platform_win import WindowsPerPixelInputController
-
-    overlay = OverlayWindow()
-    sprite = FakeSprite((100, 100), (100, 100))
-    overlay.add_sprite(sprite)
-    overlay.show()                                    # showEvent 创建真控制器
-    assert isinstance(overlay._input_controller, WindowsPerPixelInputController)
-    ctl = overlay._input_controller
-
-    # 光标落在 sprite 外：穿透；落在 sprite 不透明像素上：恢复接收
-    assert ctl.should_click_through(QPoint(10, 10)) is True
-    assert ctl.should_click_through(QPoint(120, 120)) is False
-    # 用户手动穿透开关：恒穿透
-    overlay.mouse_through = True
-    assert ctl.should_click_through(QPoint(120, 120)) is True
-    overlay.mouse_through = False
-    # 拖拽中：恒不穿透（事件必须持续送达）
-    overlay._press_global = QPoint(120, 120)
-    assert ctl.should_click_through(QPoint(10, 10)) is False
-    overlay._press_global = None
-    overlay.close()
-    assert overlay._input_controller is None          # closeEvent 复位样式并停轮询
-
-
 # ---------------------------------------------------------------- O1：帧序列渲染链
 class _FrameseqLibrary:
     """PetSprite 取帧所需的最小库替身（只服务 movie()/no_mirror）。"""
