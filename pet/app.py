@@ -442,7 +442,6 @@ _MUSIC_PLAYER_WARM_DELAY_MS = 2500
 
 #: 归「手动视觉 vision」模块的全局快捷键动作（注册与回调双守的共用清单）。
 #: ``hotkey_open_chat`` 不在此列：chat 的闸在 enable_chat 单源上。
-_VISION_HOTKEY_ACTIONS = frozenset({"look_screen", "screen_capture"})
 
 
 def _warm_music_player_paths() -> None:
@@ -2099,14 +2098,10 @@ class AppShell:
     def _apply_external_config_change(self) -> None:
         """把「配置已在别处落盘」同步到运行期（独立设置进程 / watcher 路径）。
 
-        全局快捷键也在这里重注册：关掉进程隔离时设置页就在本进程里保存、**没有**
-        watcher，改键要立刻生效就只能挂在这条共用入口上（watcher 路径同样走这里）。
-
         与进程内对话框 finished 的应用链同源（PetInstance._modern_settings_finished
         在真实壳上委托到这里）；多实例时扇出到每个 PetInstance 的窗口，而不是
         只看主窗——外部改配置的那个实例不一定是主窗。
         """
-        self._apply_global_hotkeys()
         for inst in getattr(self, "_instances", []):
             win = getattr(inst, "win", None)
             if win is not None:
@@ -2711,8 +2706,6 @@ class AppShell:
         # ——它要在关机窗口期到来**之前**就位，才能抢在会话拆除前关掉 ffmpeg
         # 派生（否则系统会弹 0xc0000142 阻塞关机）。
         self._install_session_watcher()
-        # 全局快捷键：壳已就绪才装（分发目标是壳的三个既有入口），默认全不绑。
-        self._install_global_hotkeys()
         self._announce_slot0_profile_problem()
 
     def _announce_slot0_profile_problem(self) -> None:
@@ -2778,98 +2771,6 @@ class AppShell:
                 FileInterpretController(self._overlay_shell).offer)
         except Exception:  # noqa: BLE001 - 可选服务，缺失不阻断启动
             logging.exception("overlay: 拖文件解读接线失败")
-
-    # ------------------------------------------------------------ 全局快捷键
-    def _install_global_hotkeys(self) -> None:
-        """装系统级热键服务（幂等；非 Windows 或装不上时只保留引用供诊断）。"""
-        service = getattr(self, "_hotkeys", None)
-        if service is None:
-            try:
-                from .hotkeys import GlobalHotkeyService
-
-                service = GlobalHotkeyService(self.app)
-                self._hotkeys = service  # 先保活：装原生过滤器要求对象常驻
-                service.install()
-            except Exception:
-                logging.exception("安装全局快捷键失败（右键菜单仍可用）")
-                return
-        self._apply_global_hotkeys()
-
-    def _apply_global_hotkeys(self) -> None:
-        """按当前配置重新注册全部热键（改键/启动/外部配置变更后调用）。
-
-        手动视觉（看看屏幕 / 截图提问）模块停用：这两个动作**不注册**——``apply``
-        是全量重设，从 bindings 里拿掉即顺带注销旧绑定，留着空转的键只会让用户
-        按下去毫无反应。回调落点另有早退兜底（残留绑定/老菜单直达时不再采集）。
-        """
-        service = getattr(self, "_hotkeys", None)
-        if service is None or not getattr(service, "installed", False):
-            return
-        from .hotkeys import ACTIONS
-
-        vision_active = feature_activation_mod.is_active("vision")
-        bindings = {
-            action: self.config.get(key) for action, key in ACTIONS.items()
-            if vision_active or action not in _VISION_HOTKEY_ACTIONS
-        }
-        callbacks = {
-            "open_chat": self._hotkey_open_chat,
-            "look_screen": self._hotkey_look_screen,
-            "screen_capture": self._hotkey_screen_capture,
-        }
-        if not vision_active:
-            callbacks = {a: cb for a, cb in callbacks.items()
-                         if a not in _VISION_HOTKEY_ACTIONS}
-        try:
-            failures = service.apply(bindings, callbacks)
-        except Exception:
-            logging.exception("注册全局快捷键失败（右键菜单仍可用）")
-            return
-        for action, text, reason in failures:
-            logging.warning("全局快捷键未生效：%s（%s）%s", action, text, reason)
-
-    def _hotkey_overlay(self):
-        return getattr(self, "_overlay_shell", None)
-
-    def _hotkey_open_chat(self) -> None:
-        """AI 对话：与右键「AI 对话」同一条入口（内部已处理 overlay 拓扑的回退）。"""
-        opener = getattr(self.instance, "open_chat", None)
-        if callable(opener):
-            opener()
-            return
-        quick = getattr(self._hotkey_overlay(), "open_quick_chat", None)
-        if callable(quick):
-            quick()
-
-    def _hotkey_look_screen(self) -> None:
-        """看看屏幕：与右键「看看屏幕」同一条入口（不传 sprite = 主宠）。
-
-        手动视觉模块停用：早退（热键本身不注册，本条防残留绑定/直连回调兜底）。
-        """
-        if not feature_activation_mod.is_active("vision"):
-            return
-        look = getattr(self._hotkey_overlay(), "look_at_screen", None)
-        if callable(look):
-            look()
-            return
-        legacy = getattr(getattr(self.instance, "win", None), "look_at_screen", None)
-        if callable(legacy):
-            legacy()
-
-    def _hotkey_screen_capture(self) -> None:
-        """截图提问：与右键「截图提问」同一条入口。
-
-        手动视觉模块停用：早退（同 ``_hotkey_look_screen``）。
-        """
-        if not feature_activation_mod.is_active("vision"):
-            return
-        capture = getattr(self._hotkey_overlay(), "on_screen_capture", None)
-        if callable(capture):
-            capture()
-            return
-        legacy = getattr(getattr(self.instance, "win", None), "on_screen_capture", None)
-        if callable(legacy):
-            legacy()
 
     def _install_session_watcher(self) -> None:
         """安装会话结束探测器（幂等；实例属性强引用保活，不跨实例共享）。"""
@@ -3274,12 +3175,6 @@ class AppShell:
             logging.exception("退出时关闭会话写盘 worker 失败")
         # 批5.2a：进程级共享子系统收口（agent_link / proactive / 全屏 watcher）。
         # 单窗关闭（退出这只）不触发——只有「全部退出」才停共享子系统。
-        hotkeys = getattr(self, "_hotkeys", None)
-        if hotkeys is not None:
-            try:
-                hotkeys.uninstall()
-            except Exception:
-                logging.debug("注销全局快捷键失败", exc_info=True)
         if self._shared is not None:
             try:
                 self._shared.stop_all()
@@ -3345,15 +3240,6 @@ class AppShell:
                     shell.todo_service = None
                 if getattr(shell, "_shared", None) is not None:
                     shell._shared.stop_all()
-                # 全局热键是**系统级**注册：测试里直接 start() 过的壳不摘，注册会活到
-                # 进程结束（后面的用例、甚至开发机上真热键都会被它占着）。
-                hotkeys = getattr(shell, "_hotkeys", None)
-                if hotkeys is not None:
-                    try:
-                        hotkeys.uninstall()
-                    except Exception:
-                        logging.debug("测试收口注销全局快捷键失败", exc_info=True)
-                    shell._hotkeys = None
                 service = getattr(shell, "voice_chime_service", None)
                 if service is not None:
                     try:

@@ -24,26 +24,13 @@
   window.py 链 6 处、overlay_window win32 分支、3 个 win-only 测试）+
   LESSONS/AGENTS/INDEX 入口。T2 8571 passed。
 
+- ✅ **6b-4 + 6b 系列收尾**（本批）：热键服务整族摘除——`pet/hotkeys.py` 精简为
+  ACTIONS/ACTION_LABELS/`is_supported()`（恒 False，设置页禁用态不变）；app.py 删
+  `_install/_apply_global_hotkeys`、4 个回调、两处 uninstall、`_VISION_HOTKEY_ACTIONS`；
+  **`pet/platform_win.py` 整体删除**（最后一个 import 消失）。测试：删 6 个服务类用例 +
+  2 个 vision 热键门控用例。T2 8557 passed。
+
 ## 未完成（每批：T1 + T2 + ruff，绿→commit→push）
-- **6b-2** 穿透样式族：`_set_windows_click_through/_no_activate/_non_rude` +
-  window.py(4102-4145) + overlay_window 剩余 win32 位点。
-- ✅ **6b-2**（本批）：穿透样式族——platform_win 删 click_through/no_activate/non_rude
-  三函数 + 对应常量；window.py 摘再导出、`_apply_windows_no_activate` 方法+调用点、
-  `_apply_effective_mouse_through` 的 nt 分支；overlay_window 摘 win32 导入块/
-  non_rude 位点/no_activate 分支（Qt 穿透路径去缩进保留）；删 2 个 win-only 用例。
-  T2 8569 passed。
-- **6b-3** 全屏探测族：probe 四函数 + window.py 委托方法(1389-1421) +
-  multi_window_shared/overlay_shell/overlay_peripherals + island topmost 原生分支
-  + test_island_topmost 手术。
-- ✅ **6b-3**（本批）：全屏探测族——platform_win 删 probe 四函数/`_set_windows_topmost`/
-  常量/结构体（文件只剩热键原语）；window.py 摘 4 个委托方法+再导出，保留
-  `_fg_fullscreen_probe` 恒不命中薄方法（legacy watcher 静默）；mws 的
-  `_probe_fullscreen` 改恒 False（与旧异常兜底等价）；overlay_peripherals 删
-  win32 分支；overlay_shell 删 why 探针；island 删 `_native_reassert_topmost`。
-  测试：删 3 个 native topmost 用例+几何判定用例，间谍夹具改装公开入口。
-  T2 8565 passed。
-- **6b-4** 热键族：hotkeys `GlobalHotkeyService`（`is_supported()=os.name=="nt"`，
-  先确认 app.py 创建点）+ `platform_win.py` 模块删除收尾。
 - **6c** proactive win32 路径；**6d** `resources/presentmon/` + `verify_presentmon.py`
   （game_fps/fps_permission 链路单独评估）；**6e** 散落死分支（window.py、webm_clip、
   session_watcher、config_write_lock、chat/session_store、harness_launcher、
@@ -52,6 +39,8 @@
   **2b** `packaging/dsh-pet.iss`；**2c** android 脚本 + 2 测试 + .gitignore 段；
   **2d** `pr-test.yml` 收敛（矩阵 macOS-only、shard 去已删文件、push 分支加
   OnlyMacos）；**3** README；**4** docs/INDEX 处理；**5** CHANGELOG。
+- 可选 UX 批次：设置页「互动 · 快捷键」页签在 macOS-only 下永久禁用（`is_supported()`
+  恒 False）——整页签是否移除待定（涉及 settings_interaction/搜索别名/文案 lint 多处）。
 - 待办池：空（bug/功能按「用户可感知 bug 优先」，登记类型/现象/期望/批次）。
 
 ## 验证协议

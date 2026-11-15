@@ -18,7 +18,6 @@ from PySide6.QtWidgets import QApplication
 
 from pet import hotkey_spec as spec
 from pet import hotkeys
-from pet.hotkeys import GlobalHotkeyService
 
 
 @pytest.fixture
@@ -59,101 +58,6 @@ def test_normalize_fixes_order_case_and_garbage():
     assert spec.display("") == "未设置"
     # 反向：注册位（含 MOD_NOREPEAT）能解回规范写法
     assert spec.from_win32(spec.MOD_CONTROL | spec.MOD_NOREPEAT, 0x50) == "Ctrl+P"
-
-
-# ---------------------------------------------------------------- 服务
-class _FakeUser32:
-    """``RegisterHotKey`` 替身：可指定"已被占用"的组合。"""
-
-    def __init__(self, occupied=()):
-        self.occupied = {(int(m), int(v)) for m, v in occupied}
-        self.registered: dict[int, tuple[int, int]] = {}
-        self.unregistered: list[int] = []
-        self._next = 1
-
-    def RegisterHotKey(self, hwnd, hotkey_id, modifiers, vk):  # noqa: N802
-        if (int(modifiers) & ~spec.MOD_NOREPEAT, int(vk)) in self.occupied:
-            return 0
-        self.registered[int(hotkey_id)] = (int(modifiers), int(vk))
-        return 1
-
-    def UnregisterHotKey(self, hwnd, hotkey_id):  # noqa: N802
-        self.unregistered.append(int(hotkey_id))
-        return 1 if self.registered.pop(int(hotkey_id), None) else 0
-
-
-def test_apply_registers_bindings_and_reports_failures():
-    user32 = _FakeUser32(occupied={(spec.MOD_CONTROL | spec.MOD_ALT, 0x50)})
-    service = GlobalHotkeyService(app=None, user32=user32, install_native_filter=False,
-                                 supported=True)
-    failures = service.apply(
-        {"open_chat": "Ctrl+Alt+P", "look_screen": "Ctrl+Alt+L", "screen_capture": ""},
-        {"open_chat": lambda: None, "look_screen": lambda: None})
-
-    assert [item[0] for item in failures] == ["open_chat"], "被占用必须如实报出来"
-    assert "可能已被其他程序占用" in failures[0][2]
-    assert set(service.active_bindings()) == {"look_screen"}, "只有真的注册上的才算生效"
-    assert len(user32.registered) == 1
-
-
-def test_apply_is_a_full_reset_and_clear_unregisters_everything():
-    user32 = _FakeUser32()
-    service = GlobalHotkeyService(app=None, user32=user32, install_native_filter=False,
-                                 supported=True)
-    service.apply({"open_chat": "Ctrl+Alt+P"}, {})
-    first_ids = set(user32.registered)
-
-    service.apply({"look_screen": "Ctrl+Alt+L"}, {})
-
-    assert first_ids and not (first_ids & set(user32.registered)), "改键后旧键不能还活着"
-    assert set(user32.unregistered) >= first_ids
-
-    service.clear()
-    assert user32.registered == {}
-    assert service.active_bindings() == {}
-
-
-def test_unsupported_platform_registers_nothing():
-    user32 = _FakeUser32()
-    service = GlobalHotkeyService(app=None, user32=user32, install_native_filter=False,
-                                 supported=False)
-    assert service.apply({"open_chat": "Ctrl+Alt+P"}, {}) == []
-    assert user32.registered == {}, "非 Windows 不许装模作样注册"
-    assert service.install() is False
-
-
-def _feed_hotkey(service, hotkey_id):
-    msg = hotkeys._MSG()
-    msg.message = hotkeys.WM_HOTKEY
-    msg.wParam = int(hotkey_id)
-    return service.nativeEventFilter(b"windows_generic_MSG", ctypes.addressof(msg))
-
-
-def test_wm_hotkey_dispatches_the_bound_action():
-    qapp = QApplication.instance() or QApplication([])
-    user32 = _FakeUser32()
-    service = GlobalHotkeyService(app=qapp, user32=user32, install_native_filter=False,
-                                 supported=True)
-    fired: list[str] = []
-    service.apply({"open_chat": "Ctrl+Alt+P"},
-                  {"open_chat": lambda: fired.append("open_chat")})
-
-    hotkey_id = next(iter(user32.registered))
-    handled, _result = _feed_hotkey(service, hotkey_id)
-    assert handled is True, "认领这条原生消息"
-    assert fired == [], "重活必须回事件循环，不在原生消息里直接跑"
-
-    qapp.processEvents()
-    assert fired == ["open_chat"]
-
-
-def test_wm_hotkey_for_unknown_id_is_ignored():
-    qapp = QApplication.instance() or QApplication([])
-    service = GlobalHotkeyService(app=qapp, user32=_FakeUser32(),
-                                 install_native_filter=False, supported=True)
-    service.apply({"open_chat": "Ctrl+Alt+P"}, {"open_chat": lambda: None})
-    handled, _ = _feed_hotkey(service, 0x6EFE)
-    assert handled is False, "别人的热键 id 不许吞"
 
 
 # ---------------------------------------------------------------- 设置页接线
@@ -260,27 +164,6 @@ def test_unicode_variants_never_register_another_ascii_key(text):
     """
     assert spec.parse(text) is None, f"{text} 不许被当成合法热键"
     assert spec.normalize(text) == ""
-
-
-def test_second_service_instance_is_reported(qapp_, caplog):
-    """进程内出现第二个服务实例要告警（热键 id 是进程级的，会互相顶掉）。"""
-    import logging as _logging
-
-    from pet import hotkeys as hk
-
-    user32 = _FakeUser32()
-    first = GlobalHotkeyService(app=qapp_, user32=user32, install_native_filter=False,
-                                supported=True)
-    second = GlobalHotkeyService(app=qapp_, user32=user32, install_native_filter=False,
-                                 supported=True)
-    with caplog.at_level(_logging.WARNING):
-        first.install()
-        second.install()
-
-    assert any("第二个服务实例" in record.getMessage() for record in caplog.records)
-    del hk
-    first.uninstall()
-    second.uninstall()
 
 
 @pytest.mark.parametrize("text", ["Ctrl+num*", "Ctrl+numplus", "Ctrl+num-",
