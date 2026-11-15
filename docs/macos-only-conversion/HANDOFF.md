@@ -30,9 +30,20 @@
   **`pet/platform_win.py` 整体删除**（最后一个 import 消失）。测试：删 6 个服务类用例 +
   2 个 vision 热键门控用例。T2 8557 passed。
 
+- ✅ **6c（结论：不删）**：proactive 的 `sys.platform == "win32"` 是**功能总门**
+  而非死分支——`vision.foreground_window_info()` 非 Windows 恒返回 None（HWND
+  抓屏架构），删门只会得到一个永远空转的定时器。按锁定决策 2 保留，这是除
+  `__main__.py` darwin 门禁外唯一有功能意义的平台判断。
+- ✅ **6d**：`resources/presentmon/`（exe 980KB + LICENSE）与 `scripts/verify_presentmon.py`
+  删除；THIRD_PARTY_NOTICES 删 §6 并把 §7-9 顺延为 §6-8（文件内交叉引用无 §6+ 依赖）；
+  .gitignore 的 presentmon 说明段清理、rapidocr 节号同步。game_fps 模块保留
+  （缺二进制/非 Windows 时按「不支持」优雅降级；macOS 构建本就不含该目录）。
+  T2 8557 passed。
+
 ## 未完成（每批：T1 + T2 + ruff，绿→commit→push）
-- **6c** proactive win32 路径；**6d** `resources/presentmon/` + `verify_presentmon.py`
-  （game_fps/fps_permission 链路单独评估）；**6e** 散落死分支（window.py、webm_clip、
+- **6d-2（待定，功能级）**：game_fps / fps_monitor / fps_permission 链路是否整链移除——
+  涉及灵动岛「游戏帧率」段的 UI 与状态机，属功能删减需用户拍板；当前保留优雅降级。
+- **6e** 散落死分支（window.py、webm_clip、
   session_watcher、config_write_lock、chat/session_store、harness_launcher、
   frameseq_provision、updater、tts/doubao）+ test_architecture 删除守卫。
 - **2a** requirements 剪除（pywin32-ctypes/pycaw/winrt×5/linux 钉版）；

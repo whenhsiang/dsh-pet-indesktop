@@ -191,63 +191,7 @@ SOFTWARE.
 
 ---
 
-## 6. PresentMon 2.6.0（游戏帧率采集后端，随 Windows 包分发）
-
-- **Files**:
-  - `resources/presentmon/PresentMon-2.6.0-x64.exe`（980320 字节，x86-64）
-  - `resources/presentmon/LICENSE.txt`（上游原文逐字，未改动）
-- **Origin / Source Repository**:
-  [GameTechDev/PresentMon](https://github.com/GameTechDev/PresentMon) 的 release
-  [`v2.6.0`](https://github.com/GameTechDev/PresentMon/releases/tag/v2.6.0)，
-  资产 `PresentMon-2.6.0-x64.exe`
-- **License**: MIT License（`Copyright (C) 2017-2024 Intel Corporation`）
-- **Used by**: `pet/island/game_fps.py` 与 `pet/island/fps_monitor.py`——灵动岛「游戏帧率」段的
-  数据源（读数口径是**目标应用的 Present 帧率**，来自该程序输出的
-  `MsBetweenPresents`）
-- **校验**：exe 的 sha256 `b2a706bc6ad475749e3b7e3409263aa1e6906d45bdcf993f6dbc0f660188f1af`
-  （与 GitHub release API 的 `digest` 字段一致）；`LICENSE.txt` 与 v2.6.0 源码树里的
-  同名文件逐字节相同。构建期由 `scripts/verify_presentmon.py` 按「文件名 + sha256 +
-  x86-64 架构」三重校验，任一不符即中止构建（少一个后端不会让程序崩，只会让这一段
-  永远不出数，所以必须在打包阶段拦住）
-- **为什么不是 pip 依赖**：上游没有 PyPI 包；官方支持的集成方式就是分发这个独立
-  控制台程序，由它在系统层（ETW）采集显卡 Present 事件——本应用不自己实现采集
-- **分发方式与边界**：**不装 MSI、不注册服务、不装驱动、不写注册表**。只在用户
-  自己打开「游戏帧率」指标、且存在采集目标时，它才作为子进程按需启动；关闭开关、
-  目标消失或桌宠退出即收口。仅 Windows 打包变体携带它（macOS / Linux 包里没有这个
-  目录），非 Windows 平台上这一段按「不支持」呈现
-- **安装包里的位置**：随 onedir 产物落在 `_internal/resources/presentmon/`，安装器
-  整目录拷贝，因此 `LICENSE.txt` 与二进制一同随包分发（MIT 要求的声明随附）
-- **升级路径**：换版本必须同时改 `pet/island/game_fps.py` 的 `BACKEND_EXE_NAME`、
-  `REQUIRED_SHA256`、`SOURCE_TEXT` 与本文件——文件名带版本号（`PresentMon-2.6.0-x64.exe`）
-  就是为了不让"同名不同版"成为静默替换
-
-### MIT License Text
-
-```text
-Copyright (C) 2017-2024 Intel Corporation
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"),
-to deal in the Software without restriction, including without limitation
-the rights to use, copy, modify, merge, publish, distribute, sublicense,
-and/or sell copies of the Software, and to permit persons to whom
-the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included
-in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
-OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES
-OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
-OR OTHER DEALINGS IN THE SOFTWARE.
-```
-
----
-
-## 7. 本地 OCR（快速识屏：RapidOCR + PP-OCR 模型 + ONNXRuntime）
+## 6. 本地 OCR（快速识屏：RapidOCR + PP-OCR 模型 + ONNXRuntime）
 
 - **随包模型 Files**（`resources/rapidocr_models/`，共 30.3 MiB / 31.7 MB，
   31,772,168 字节——下表逐项相加所得，2026-10-13 实测；其中三个 `.onnx` 占
@@ -312,7 +256,7 @@ headless，本机两个发行名同版本并存、都提供 `cv2` 顶层模块�
 `scripts/slim_bundle.py` 的违禁清单拦——它们现在是产品依赖（排除它们曾让冻结包
 的 OCR 全线不可用，2026-10-13 实测）。
 
-## 8. DeepSeek 鲸鱼标识（识屏加载动画：ds_whale.png）
+## 7. DeepSeek 鲸鱼标识（识屏加载动画：ds_whale.png）
 
 - **File**：`assets/chat/ds_whale.png`（512×512 透明 PNG，由本项目用 QtSvg 渲染生成）。
 - **Origin / Source**：形状路径取自 simple-icons 仓库的 `icons/deepseek.svg`
@@ -322,7 +266,7 @@ headless，本机两个发行名同版本并存、都提供 `cv2` 顶层模块�
   名称与鲸鱼标识的商标权归深度求索（DeepSeek）所有**——本项目是其桌面宠物衍生
   作品，按品牌本意作指示性使用（不代表官方出品/背书）。
 
-## 9. Android 客户端与构建工具
+## 8. Android 客户端与构建工具
 
 - Kotlin 及 kotlinx.coroutines：JetBrains 与贡献者，Apache-2.0。
   https://github.com/JetBrains/kotlin ，https://github.com/Kotlin/kotlinx.coroutines 。
