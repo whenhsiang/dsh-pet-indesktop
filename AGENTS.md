@@ -235,8 +235,10 @@ restyling settings, menus, dialogs, overlays, or desktop widgets.
 ### Work handoff
 
 For unfinished multi-ticket work, read and refresh the feature's
-`.scratch/<feature-slug>/HANDOFF.md` before ending or resuming work. Keep the
-exact breakpoint there; see `docs/agents/handoff.md`.
+`docs/<feature-slug>/HANDOFF.md` before ending or resuming work. Keep the exact
+breakpoint there; see `docs/agents/handoff.md`. Committed handoffs stay concise
+(status + decisions only; lessons live in `docs/LESSONS.md`). Current macOS-only
+改造：`docs/macos-only-conversion/HANDOFF.md`。
 
 ## Context pointers
 

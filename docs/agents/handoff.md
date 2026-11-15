@@ -1,8 +1,10 @@
 # Work handoff
 
 Use a feature handoff only when work remains across tasks or context windows.
-Store it at `.scratch/<feature-slug>/HANDOFF.md`; completed work needs no
-permanent handoff.
+Store it at `docs/<feature-slug>/HANDOFF.md` when it must survive local
+loss (committed → remote backup); pure-local drafts may stay in
+`.scratch/<feature-slug>/HANDOFF.md`. Completed work needs no permanent
+handoff.
 
 Keep these fields current:
 
