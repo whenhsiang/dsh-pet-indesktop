@@ -5,8 +5,10 @@
 ## 交接速查（2026-11-21 收尾：**新会话先读这一节**）
 
 **分支 / 工作区**（`git status -sb` 实测）
-- 分支 `OnlyMacos`，本地 = `origin/OnlyMacos` = `f755ef1`；远程 `origin` =
-  `https://github.com/whenhsiang/dsh-pet-indesktop.git`（无 upstream remote）。
+- 分支 `OnlyMacos`，本地与 `origin/OnlyMacos` 一致（`git status -sb` 无 ahead/behind）；
+  远程 `origin` = `https://github.com/whenhsiang/dsh-pet-indesktop.git`（无 upstream remote）。
+  推送会触发 `pr-test.yml`（push 到 main/OnlyMacos 都跑）；`build-macos`/`republish-assets` 仅手动触发，
+  所以 push 不会出包、不会发版。
 - 本批改动**已提交**（`git log -1` 即本批：`fix(overlay): macOS 首建窗 20pt 收窄 + 边缘探头点击脱困/拖拽 rebase`）；
   收尾后 `git status -sb` 应为干净。`main` 只读（= 上游 `34d810b`）。
 - 提交内容：9 个文件（4 个产品文件 + 3 个测试 + 2 个文档），详见下一段。
