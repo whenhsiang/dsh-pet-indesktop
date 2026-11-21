@@ -632,6 +632,45 @@ def _rotated_hit_sprite(*, pos=(100, 400)) -> tuple[OverlayWindow, PetSprite]:
     return overlay, sprite
 
 
+def test_paint_gate_uses_paint_bounds_for_rotated_overflow():
+    """脏区只落在旋转溢出带（不在未旋转 rect 内）时仍必须画这一只。
+
+    旧闸门用 ``region.intersects(sprite.rect())``：45° 探头/抛掷旋转把可见像素
+    画到 rect 之外，只脏在溢出带的那一拍会被整只跳过 → 该擦的没擦、该画的
+    没画（残影/直边）。闸门必须与 ``sprite_at`` 同口径用 ``paint_bounds()``。
+    """
+    from PySide6.QtGui import QPaintEvent
+
+    class _S:
+        visible = True
+
+        def __init__(self):
+            self.painted = 0
+
+        def rect(self):
+            return QRect(100, 100, 40, 40)
+
+        def paint_bounds(self):
+            return QRect(60, 60, 120, 120)
+
+        def paint(self, _painter):
+            self.painted += 1
+
+    overlay = _make_overlay()
+    sprite = _S()
+    overlay.sprites.append(sprite)          # 绕过 add_sprite（假 sprite 无 DPR 面）
+    try:
+        overlay.show()
+        outside_rect = QRect(62, 62, 8, 8)   # 在 paint_bounds 内、rect 外
+        assert sprite.paint_bounds().contains(outside_rect)
+        assert not sprite.rect().intersects(outside_rect)
+
+        overlay.paintEvent(QPaintEvent(QRegion(outside_rect)))
+        assert sprite.painted == 1
+    finally:
+        overlay.close()
+
+
 def test_rotated_visible_pixel_outside_rect_is_hit():
     """45° 探头姿态：画在 rect 之外的可见像素必须点得中（粗筛用绘制外接矩形）。
 

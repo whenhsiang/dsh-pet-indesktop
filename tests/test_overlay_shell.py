@@ -691,6 +691,61 @@ def test_shell_wires_throw_egg_world():
     assert egg.bounds == QRect(0, 0, 1280, 680)
 
 
+def test_drag_commit_only_rebases_when_probe_cancel_moved_the_pet(monkeypatch):
+    """普通拖拽零行为变化；只有探头取消**真的挪了位置**才重设抓取偏移。
+
+    背景：探头 ``cancel`` 会把身体从屏外钳回边缘（``pos`` 变了），而按下时记的
+    抓取偏移还是旧位置算的；不重设时每次 ``on_move`` 的落点都会被钳回边缘——
+    实机表现是「光标要先移动一段，宠物才开始动」。但普通拖拽（位置没变）绝不
+    能重设：那会把 press→commit 之间那几像素的位移吞掉，改变既有手感。
+    """
+    from PySide6.QtCore import QPoint
+
+    shell, _screen, _ = _make_shell()
+    sprite = shell.sprite
+    calls = []
+    monkeypatch.setattr(overlay_shell_mod, "_rebase_drag_after_probe",
+                        lambda sp, ov, gp: calls.append((sp, ov, gp)))
+    global_pos = QPoint(11, 22)
+
+    # ① 无探头会话（位置不变）：不重设
+    shell._on_drag_committed(sprite, global_pos)
+    assert calls == []
+
+    # ② 探头取消把身体钳回屏内（位置变了）：用这一帧的全局坐标重设
+    host = shell._main_host
+    original = host.probe.on_sprite_drag_started
+    host.probe.on_sprite_drag_started = lambda sp: sp.set_pos(
+        QPointF(sp.pos.x() + 5.0, sp.pos.y()))
+    try:
+        shell._on_drag_committed(sprite, global_pos)
+    finally:
+        host.probe.on_sprite_drag_started = original
+    assert calls == [(sprite, shell.overlay, global_pos)]
+
+
+def test_rebase_drag_after_probe_maps_global_cursor_into_overlay_space():
+    """助手把**事件里的全局坐标**换算成宿主窗局部坐标；无窗/无坐标时静默跳过。"""
+    from PySide6.QtCore import QPoint
+
+    seen = []
+
+    class _Overlay:
+        def mapFromGlobal(self, pos):  # noqa: N802 - Qt 命名
+            assert pos == QPoint(300, 400)
+            return QPoint(7, 9)
+
+    class _Sprite:
+        def rebase_drag_offset(self, pos):
+            seen.append(pos)
+
+    overlay_shell_mod._rebase_drag_after_probe(_Sprite(), _Overlay(), QPoint(300, 400))
+    overlay_shell_mod._rebase_drag_after_probe(_Sprite(), None, QPoint(300, 400))
+    overlay_shell_mod._rebase_drag_after_probe(_Sprite(), _Overlay(), None)
+
+    assert seen == [QPointF(7, 9)]
+
+
 def test_shell_wires_slingshot_config():
     """弹弓接线：overlay.slingshot 接 shell 的 config（slingshot_enabled 热读）。"""
     shell, _, _ = _make_shell()

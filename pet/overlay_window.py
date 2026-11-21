@@ -37,9 +37,12 @@ Phase 4 M-2：仿真推进（行为/碰撞/抛掷物理）与 tick 时钟、M-1 
 
 from __future__ import annotations
 
+import logging
+import sys
+
 import shiboken6
-from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt
-from PySide6.QtGui import QCursor, QPainter, QRegion, QScreen
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, QTimer, Qt
+from PySide6.QtGui import (QCursor, QGuiApplication, QPainter, QRegion, QScreen)
 from PySide6.QtWidgets import QApplication, QWidget
 
 from . import catalog
@@ -231,6 +234,17 @@ class OverlayWindow(QWidget):
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        # macOS：首次原生建窗会把 frame 收进 visibleFrame——本机实测请求
+        # (0,33,1470,923) 被建成 (0,33,1450,903)（右/下各少 20pt），**show 之后**
+        # 再 setGeometry 才被接受。不补这一次，sprite 坐标系（壳的 host.bounds =
+        # 请求矩形）就比真实窗口大 20px：贴右边缘的角色被窗口裁掉一截（实机
+        # 「右侧贴边离屏幕还有段距离」）、贴底的角色脚被切。
+        # showEvent 里当场补一次不够：Cocoa 的 frame 收窄发生在原生窗口创建之后
+        # （晚于 showEvent，同 platform_passthrough 记录的 X11 时序），所以再排
+        # 两拍延迟对账（0ms 覆盖常态，60ms 兜住原生重建较慢的机器）。
+        self._reassert_geometry_after_show()
+        for delay_ms in (0, 60):
+            QTimer.singleShot(delay_ms, self, self._reassert_geometry_after_show)
         # macOS：原生关掉 hidesOnDeactivate（issue #262 / #273）。Cocoa 失活时
         # order out 窗口的**真正判据**就是这个原生属性；Qt 属性
         # （__init__ 里已下发的 WA_MacAlwaysShowToolWindow）在部分系统版本上被
@@ -263,6 +277,37 @@ class OverlayWindow(QWidget):
         # 之前不留「整屏吞点击」窗口）+ 重开轮询表 + 排一次延迟对账（平台显示
         # 阶段可能又重建了原生窗口，见 platform_passthrough._reconcile_after_show）。
         self._input_controller.resume()
+
+    def _reassert_geometry_after_show(self) -> None:
+        """show 后把窗口矩形补回 ``_desktop_rect()``（macOS 首建窗会被收窄）。
+
+        只在 cocoa 上做（offscreen 测试平台无此约束，且测试会用自定义尺寸）；
+        只有"实际 ≠ 目标"时才写并落一行日志——否则窗口/坐标两套尺寸静默分叉，
+        贴边少一段只能靠肉眼发现。
+        """
+        if sys.platform != "darwin" or QGuiApplication.platformName() != "cocoa":
+            return
+        try:
+            target = self._desktop_rect()
+            if not target.isValid() or QRect(self.geometry()) == target:
+                return
+            before = QRect(self.geometry())
+            self.setGeometry(target)
+            logging.info(
+                "overlay: show 后重设窗口矩形 %s → %s（macOS 首建窗把 frame 收进 "
+                "visibleFrame，右/下各少一截）",
+                before.getRect(), QRect(self.geometry()).getRect())
+        except (AttributeError, RuntimeError):
+            logging.debug("overlay: show 后重设窗口矩形失败", exc_info=True)
+
+    def resizeEvent(self, event) -> None:
+        """原生窗口被系统收窄（重建/切屏）后把尺寸补回 ``_desktop_rect()``。
+
+        兜底：``showEvent`` 那两拍覆盖常规路径，但原生窗口重建（改 flags、
+        切屏、系统重排）可能发生在可见期。幂等且只在 cocoa 上生效。
+        """
+        super().resizeEvent(event)
+        self._reassert_geometry_after_show()
 
     def hideEvent(self, event) -> None:
         """隐藏期不轮询（O2）：不可见窗口不收输入，两条探测链路都是空转。
@@ -715,7 +760,12 @@ class OverlayWindow(QWidget):
         for sprite in self.sprites:  # 列表序 = z-order：先画底层，尾部最上
             if not getattr(sprite, "visible", True):
                 continue  # M14：隐藏 sprite 跳过绘制（脏区域照旧被覆盖擦除）
-            if region.intersects(sprite.rect()):
+            # 闸门必须用**绘制外接框**（含 ±45° 探头 / 抛掷旋转的溢出），与
+            # ``sprite_at`` 同口径：用未旋转的 ``rect()`` 会把"脏区只落在旋转
+            # 溢出带"的那一拍整只跳过（该擦的没擦、该画的没画 → 残影/直边）。
+            bounds = (sprite.paint_bounds() if hasattr(sprite, "paint_bounds")
+                      else sprite.rect())
+            if region.intersects(bounds):
                 sprite.paint(painter)
         # 跨屏投影：不属于本窗、但身体有一部分落在本屏的那只，按映射平移重画。
         # 画在本窗自己的 sprite 之上（正在被拖的那只是活动对象，压在别人上面）。
@@ -939,7 +989,9 @@ class OverlayWindow(QWidget):
             behavior.on_drag_started(grab)
         cb = getattr(self, "_drag_committed_cb", None)
         if callable(cb):
-            cb(grab)
+            # 带上过阈值这一帧的**全局**坐标：探头取消可能刚好把身体钳回屏内，
+            # 壳层要用它重设抓取偏移（不能用 QCursor，测试/合成事件下是错的）。
+            cb(grab, global_pos)
         # 拖拽第一帧立即同步跟随方（旧 window.py:3330 的 _position_sync_now）：
         # 位置通知只在 tick 扇出里发，起步拍不做这一步气泡要等一次 tick + 可能
         # 一次 30Hz 补发（最坏 ≈50ms 拖尾）。

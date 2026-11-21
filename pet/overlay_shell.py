@@ -90,7 +90,8 @@ _IS_MACOS = sys.platform == "darwin"
 import shiboken6
 from PySide6.QtCore import (
     QEvent, QObject, QPoint, QPointF, QRect, QRectF, QTimer, Qt, Signal)
-from PySide6.QtGui import QBitmap, QGuiApplication, QIcon, QImage, QPixmap, QRegion
+from PySide6.QtGui import (
+    QBitmap, QGuiApplication, QIcon, QImage, QPixmap, QRegion)
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon, QWidget
 
 from . import autostart as autostart_mod
@@ -795,6 +796,29 @@ def _crop_icon_pixmap(pm: QPixmap, size: int) -> QPixmap:
 _TOPOLOGY_MAX_PASSES = 4
 
 
+def _rebase_drag_after_probe(sprite, overlay, global_pos) -> None:
+    """探头取消后按**过阈值那一帧的光标**重设抓取偏移（拖拽跟手，不钉在边缘）。
+
+    过阈值升级真拖拽时 ``probe.on_sprite_drag_started`` 会 ``cancel`` 探头，
+    ``clear_probe_pose`` 随即按常规钳制把身体从屏外弹回边缘——``sprite.pos``
+    变了，而按下时记的 ``_drag_offset`` 还是旧位置算的。不重设的话后续每一次
+    ``on_move`` 的落点都会被钳回边缘（实机：光标要先移动"离屏量"那么多宠物
+    才开始动，然后跳一下）。
+
+    坐标一律取**事件里的**全局坐标再换算到该 sprite 宿主窗的局部坐标：
+    不用 ``QCursor.pos()``——合成事件/自动化测试下它与手势无关，会把宠物
+    甩到光标处；``global_pos`` 缺省（直接调用钩子的测试）时保持原偏移。
+    """
+    rebase = getattr(sprite, "rebase_drag_offset", None)
+    if not callable(rebase) or overlay is None or global_pos is None:
+        return
+    try:
+        local = overlay.mapFromGlobal(global_pos)
+    except (AttributeError, RuntimeError):
+        return  # 窗口已销毁/无原生窗：保持原偏移（宁可不跟手也不抛）
+    rebase(QPointF(local))
+
+
 class ShellOverlayWindow(OverlayWindow):
     """4.1a 产品 overlay：挂进程级驱动器 + 单击/拖拽区分。
 
@@ -841,10 +865,14 @@ class ShellOverlayWindow(OverlayWindow):
         delta = self.geometry().topLeft() - host.overlay.geometry().topLeft()
         return QPointF(local_pos) + QPointF(delta)
 
-    def _on_real_drag_started(self, sprite) -> None:
+    def _on_real_drag_started(self, sprite, global_pos=None) -> None:
+        before = QPointF(sprite.pos)
         probe = self._probe_of(sprite)
         if probe is not None:
             probe.on_sprite_drag_started(sprite)
+        # 只有探头取消**真的挪了位置**才重设抓取偏移（普通拖拽零行为变化）
+        if QPointF(sprite.pos) != before:
+            _rebase_drag_after_probe(sprite, self, global_pos)
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 (Qt 命名)
         self._press_pos = event.position()
@@ -870,10 +898,11 @@ class ShellOverlayWindow(OverlayWindow):
         # 与旧机两处闸门「取消拖拽但保留点击」语义一致
         if click_only or (not committed
                           and (event.position() - press).manhattanLength() < threshold):
-            # 边缘探头消费点击（PEEKING 拉直/STRAIGHTENED 重置倒计时）时，
-            # 抑制点击反应与点击音效——拉直本身就是反馈
-            if probe is not None and probe.on_sprite_clicked(grab):
-                return
+            # 边缘探头：点击真实角色 = 结束探头会话（整只回到屏内，并按
+            # EDGE_IDLE_SECONDS arm 自动缩回的倒计时），交互照常走点击动画/
+            # 音效/气泡——探头不再消费点击。
+            if probe is not None:
+                probe.on_sprite_clicked(grab)
             # M5e：点击触发黄金回旋（window.py:3356-3357 的同位置路由）。
             # 返回 True = 本次点击被效果层消费（直连模式），不再播点击反应/音效
             route_spin = getattr(self, "_click_route_spin", None)
@@ -1459,6 +1488,29 @@ class OverlayShell(QObject):
             return "活跃宠物清单为空（overlay-active-pets.json 里没有有效身份）"
         return f"活跃清单 {active} 里的宠物都没能建起来（原因见日志）"
 
+    def _log_host_geometry(self, host, tag: str) -> None:
+        """落一行窗口/屏/可用区锚点（定位「右侧贴边留缝」这类几何类反馈）。
+
+        ``bounds`` 是精灵坐标系的可用区（窗口局部）；``overlay`` 是窗口在全局
+        逻辑坐标里的实际矩形。两者右/下缘若对不上屏幕的右/下缘，贴边就会停在
+        屏幕内侧——这正是「左侧正常、右侧留一条缝」的形态，故三个矩形一起记。
+        只在建宿主/几何变化时调，不进 tick。
+        """
+        try:
+            overlay = host.overlay
+            screen = host.screen
+            logging.info(
+                "[overlay 几何] %s overlay=%s bounds=%s screen=%s geometry=%s "
+                "available=%s dpr=%.2f",
+                tag, overlay.geometry().getRect(), host.bounds.getRect(),
+                screen.name() if screen is not None else "?",
+                screen.geometry().getRect() if screen is not None else None,
+                screen.availableGeometry().getRect() if screen is not None else None,
+                float(overlay.devicePixelRatioF()),
+            )
+        except (AttributeError, RuntimeError):
+            logging.debug("[overlay 几何] 记录失败（窗口/屏已销毁）", exc_info=True)
+
     def _create_host(self, screen):
         """建唯一宿主（合成窗 + 一份控制器组 + 活动区），并接线到壳。
 
@@ -1485,6 +1537,7 @@ class OverlayShell(QObject):
         overlay._screen_of_sprite = self._screen_of_sprite  # noqa: SLF001
         overlay.setGeometry(desktop)
         host = ScreenHost(screen, overlay, bounds)
+        self._log_host_geometry(host, "建宿主")
         self._hosts.append(host)
         # 活动区要在宿主进表之后算：家那块屏（关闭跨屏时唯一活动区）从宿主读
         host.set_activity(self._host_activity(host))
@@ -5109,15 +5162,23 @@ class OverlayShell(QObject):
                 self._auto_cursor_hidden = False
                 self._apply_effective_mouse_through()
 
-    def _on_drag_committed(self, sprite) -> None:
+    def _on_drag_committed(self, sprite, global_pos=None) -> None:
         """真拖拽升级（``overlay._drag_committed_cb``）：取消探头 + 放宽钳制域。
 
         窗口自带的 ``_on_real_drag_started`` 只做探头取消；放宽域要碰宿主的活动区，
         所以整条升级钩子接到壳层来（``_wire_host_overlay`` 里覆盖）。
+        ``global_pos`` 是过阈值那一帧的全局坐标（``overlay_window`` 传入）。
         """
+        before = QPointF(sprite.pos)
         probe = self._probe_of_sprite(sprite)
         if probe is not None:
             probe.on_sprite_drag_started(sprite)
+        host = self.host_for_sprite(sprite) or self._main_host
+        if QPointF(sprite.pos) != before:
+            # 探头取消把身体从屏外钳回边缘：抓取偏移要按当前光标重设，
+            # 否则后续 on_move 全被钳在边缘（"要拖很远宠物才动"）。
+            _rebase_drag_after_probe(
+                sprite, None if host is None else host.overlay, global_pos)
         self._relax_drag_domain(sprite)
 
     def _probe_of_sprite(self, sprite):
@@ -7612,6 +7673,7 @@ class OverlayShell(QObject):
         plan = self._geometry_plan(host, multi=multi)
         host.overlay.setGeometry(desktop)
         host.set_bounds(QRect(0, 0, desktop.width(), desktop.height()))
+        self._log_host_geometry(host, "几何重算")
         host.set_activity(self._activity_rects(multi=multi))
         # 单窗下每块屏在窗里的位置也是"已应用状态"，同样要刷新给下一次比例定标用。
         for screen in self._screens():

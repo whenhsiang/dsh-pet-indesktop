@@ -13,13 +13,18 @@
 - 出屏：探头期间 sprite 自身钳制域放宽（``probe_body_bounds`` 语义：左右各
   放宽一个身体宽），身体按曝光比例藏出屏幕缘；取消即清姿态、恢复常规钳制。
 
-状态机逐条对齐旧机：``OFF/ENTERING/PEEKING/STRAIGHTENING/STRAIGHTENED/
-RETURNING``；进入条件 = 边缘 + 持续静止（``EDGE_REST_SECONDS``，「拖着经过
-边缘」不算）；过渡动画是角度/曝光 tween，**时间基是注入时钟而不是 tick
-计数**；点击真实角色 → 拉直（0°/``EDGE_ENGAGE_EXPOSURE``）→
-``EDGE_IDLE_SECONDS`` 后自动退回探头姿态；拖拽开始/碰撞真撞击/抛掷态 →
-``cancel``；多 sprite 各自独立；隐藏时 ``pause`` 冻结进度、``resume`` 从原处
-继续（同旧机）。
+状态机：``OFF/ENTERING/PEEKING``；进入条件 = 边缘 + 持续静止
+（``EDGE_REST_SECONDS``，「拖着经过边缘」不算）；过渡动画是角度/曝光 tween，
+**时间基是注入时钟而不是 tick 计数**。
+
+点击真实角色 = **退出会话**：清姿态后常规钳制把整只身体带回屏幕内，并把交互
+交回普通点击链路（播点击动画/音效/气泡）；若仍静止在原来那条边，
+``EDGE_IDLE_SECONDS`` 后自动重新缩回探头，期间再点击会把倒计时推后。
+旧机是「拉直成 0°/0.82 保持 5 秒」，但 0.82 会让身体永远留一截在屏外、
+``probe_active``（= 曝光 < 1）也不收，点击动画/音效因此被闸门挡住——这正是
+用户实测「点击唤醒后有小部分身子在屏外、而且不能点击互动」的来源。
+拖拽开始/碰撞真撞击/抛掷态 → ``cancel``；多 sprite 各自独立；隐藏时 ``pause``
+冻结进度、``resume`` 从原处继续（同旧机）。
 
 与旧机的两处刻意差异（sprite 世界无对应物，已在测试里固化）：
 
@@ -57,11 +62,8 @@ EDGE_PROBE_ANGLE = 45.0
 # 露出比例的分母 = 当前姿态（含 ±45° 旋转）投影 bbox 宽度；0.55 使常驻探头
 # 只露头/脸并贴住屏幕边缘（0.70 曾导致整个角色探出过多）。与旧机同值。
 EDGE_PEEK_EXPOSURE = 0.55
-# 点击拉直后基本全出（短暂查看完整桌宠）。
-EDGE_ENGAGE_EXPOSURE = 0.82
 EDGE_ENTER_MS = 300
-EDGE_STRAIGHTEN_MS = 250
-EDGE_RETURN_MS = 300
+# 点击退出探头后，仍静止在原边多久自动重新缩回探头（期间再点击会推后）。
 EDGE_IDLE_SECONDS = 5.0
 # 碰撞撞飞/抛掷取消后允许重新进入探头吸附前的等待秒数（旧批 A 语义）。
 EDGE_REENTRY_SECONDS = 5.0
@@ -76,14 +78,13 @@ EDGE_TOLERANCE_PX = 1
 OFF = "OFF"
 ENTERING = "ENTERING"
 PEEKING = "PEEKING"
-STRAIGHTENING = "STRAIGHTENING"
-STRAIGHTENED = "STRAIGHTENED"
-RETURNING = "RETURNING"
 
-_TRANSITION_MODES = frozenset({ENTERING, STRAIGHTENING, RETURNING})
-# 触发「等待落地停稳后重新进入」的取消原因（旧机只有碰撞撞飞 arm；抛掷是
-# sprite 世界的独立触发源，同样给 5 秒缓冲，避免刚摔回来又被吸住）。
-_REENTRY_REASONS = frozenset({"collision_throw", "throw"})
+_TRANSITION_MODES = frozenset({ENTERING})
+# 触发「退出后等一会儿再重新进入」的取消原因：碰撞撞飞/抛掷（避免刚摔回来又
+# 被吸住）与点击退出（保留「点一下能完全互动、5 秒后又自己缩回去窥视」）。
+_REENTRY_REASONS = frozenset({"collision_throw", "throw", "click_out"})
+# 各原因的等待时长；未列出的走 EDGE_REENTRY_SECONDS。
+_REENTRY_DELAYS = {"click_out": EDGE_IDLE_SECONDS}
 
 
 def edge_side_at_rest(sprite: Any, bounds: QRect) -> str | None:
@@ -134,7 +135,7 @@ class _ProbeState:
     __slots__ = ("mode", "side", "angle", "exposure", "transition_start",
                  "transition_duration_ms", "from_angle", "to_angle",
                  "from_exposure", "to_exposure", "last_tick_time",
-                 "idle_remaining", "rest_seconds", "reentry_remaining")
+                 "rest_seconds", "reentry_remaining")
 
     def __init__(self, now: float) -> None:
         self.mode = OFF
@@ -148,7 +149,6 @@ class _ProbeState:
         self.from_exposure = 1.0
         self.to_exposure = 1.0
         self.last_tick_time = now
-        self.idle_remaining = 0.0
         self.rest_seconds = 0.0
         self.reentry_remaining = 0.0
 
@@ -174,6 +174,9 @@ class SpriteEdgeProbeWorld:
         self._states: dict = {}
         self._hidden = False
         self._paused_at = 0.0
+        # 姿态日志节流（同旧机 0.5s）：定位「右侧留缝 / 探出过多」时要有
+        # 目标 x、实际 x、投影框与可用区四个锚点。
+        self._last_pose_log_at = 0.0
 
     # ---------------------------------------------------------------- 查询
     @property
@@ -237,6 +240,13 @@ class SpriteEdgeProbeWorld:
             return
         now = self._clock()
         for sprite in list(sprites):
+            if not getattr(sprite, "visible", True):
+                # 逐只隐藏（托盘「隐藏这只」）不是整窗 pause：继续给它摆姿态只会在
+                # 重新显示时留下"半身在屏外 + 点击只脱困"的僵态。
+                st = self._states.get(sprite)
+                if st is not None and st.mode != OFF:
+                    self.cancel(sprite, "hidden")
+                continue
             st = self._states.get(sprite)
             if st is not None and st.mode != OFF:
                 self._tick_session(sprite, st, now)
@@ -267,23 +277,31 @@ class SpriteEdgeProbeWorld:
             self.cancel(sprite, "drag_away")
 
     def on_sprite_clicked(self, sprite: Any) -> bool:
-        """点击真实角色：PEEKING/RETURNING → 拉直；STRAIGHTENED → 重置倒计时。
+        """点击真实角色：结束探头会话 → 整只回到屏幕内，交互交回普通点击链路。
 
-        返回 True = 本次点击被探头消费（壳层据此抑制点击音效/点击反应）。
-        ENTERING/STRAIGHTENING 期间不重复打断（旧机同语义）。
+        与旧机「拉直成 0°/0.82 保持 5 秒」不同：那样曝光永远 < 1，
+        ``probe_active`` 不收 → 点击动画/音效/气泡被闸门挡住，而身体仍有一截
+        留在屏外。这里直接 ``cancel``：清姿态 + 常规钳制把整只带回屏内，并按
+        ``click_out`` arm 一段重进倒计时——仍静止在原边就自动缩回探头，
+        期间再点击只把倒计时推后（=「5 秒没操作才缩回去」）。
+
+        返回 False = 本次点击**不**被探头消费，壳层继续播点击动画/音效/气泡。
+        返回值保留 bool 形态（旧契约的消费语义留给未来的“点击型探头反馈”）。
         """
         if self._hidden or not self._enabled():
             return False
         st = self._states.get(sprite)
-        if st is None or st.mode == OFF:
+        if st is None:
             return False
         now = self._clock()
-        if st.mode == PEEKING or st.mode == RETURNING:
-            self._start_straighten(sprite, st, now)
-        elif st.mode == STRAIGHTENED:
-            st.idle_remaining = EDGE_IDLE_SECONDS
-            st.last_tick_time = now
-        return True
+        if st.mode == OFF:
+            # 已在重进倒计时（上一次点击/碰撞退出）：本次点击把倒计时推后
+            if st.reentry_remaining > 0.0:
+                st.reentry_remaining = _REENTRY_DELAYS.get("click_out", EDGE_IDLE_SECONDS)
+                st.last_tick_time = now
+            return False
+        self.cancel(sprite, "click_out")
+        return False
 
     def on_sprite_collision_hit(self, sprite: Any) -> bool:
         """碰撞真撞击（碰撞世界 listener 接线入口）：取消会话并 arm 重进倒计时。
@@ -306,8 +324,9 @@ class SpriteEdgeProbeWorld:
         """取消会话（幂等）：清探头姿态（角度 0/曝光 1）→ 常规钳制把身体钳回屏内。
 
         ``restore`` 保留只为对齐旧机签名：sprite 世界没有窗口 x 恢复值，清姿态
-        本身就是恢复（旧 ``_restore_x`` 的等价物）。碰撞/抛掷取消会 arm
-        ``EDGE_REENTRY_SECONDS`` 重进倒计时（旧批 A 语义）。
+        本身就是恢复（旧 ``_restore_x`` 的等价物）。碰撞/抛掷/点击退出会按
+        ``_REENTRY_DELAYS`` arm 重进倒计时（默认 ``EDGE_REENTRY_SECONDS``；
+        点击退出用 ``EDGE_IDLE_SECONDS``，= 「点完 5 秒没动静再缩回去」）。
         """
         del restore  # 见 docstring：sprite 世界不需要窗口坐标恢复
         st = self._states.pop(sprite, None)
@@ -317,9 +336,15 @@ class SpriteEdgeProbeWorld:
         if callable(clear):
             clear()
         log.info("[边缘探头] 退出 reason=%s side=%s", reason, st.side)
+        if reason == "click_out":
+            # 取证：点击脱困后必须整只回到屏内（左/右缘差都应 >= 0 附近）
+            try:
+                self._log_visible(sprite, "点击脱困")
+            except Exception:  # noqa: BLE001
+                log.debug("[边缘探头] 点击脱困日志失败", exc_info=True)
         if reason in _REENTRY_REASONS:
             armed = _ProbeState(self._clock())
-            armed.reentry_remaining = EDGE_REENTRY_SECONDS
+            armed.reentry_remaining = _REENTRY_DELAYS.get(reason, EDGE_REENTRY_SECONDS)
             self._states[sprite] = armed
 
     def cancel_all(self, reason: str = "") -> None:
@@ -410,20 +435,13 @@ class SpriteEdgeProbeWorld:
             return
         if st.mode in _TRANSITION_MODES:
             self._tick_transition(sprite, st, now)
-        elif st.mode == STRAIGHTENED:
-            dt = max(0.0, now - st.last_tick_time)
-            st.last_tick_time = now
-            st.idle_remaining = max(0.0, st.idle_remaining - dt)
-            if st.idle_remaining <= 0.0:
-                self._begin_return(sprite, st, now)
-        # PEEKING 稳态：不推进、不需要 timer（等点击/取消），同旧机
+        # PEEKING 稳态：不推进、不需要 timer（等点击/取消/碰撞），同旧机
 
     def _enter(self, sprite: Any, st: _ProbeState, now: float) -> None:
         side = edge_side_at_rest(sprite, self._bounds) or "left"
         st.side = side
         st.rest_seconds = 0.0
         st.reentry_remaining = 0.0
-        st.idle_remaining = 0.0
         set_velocity = getattr(sprite, "set_velocity", None)
         if callable(set_velocity):
             set_velocity(QPointF(0, 0))  # 会话期间不允许位移（旧机 cancel_move 语义）
@@ -435,6 +453,49 @@ class SpriteEdgeProbeWorld:
                  side, sprite.pos.x(), sprite.pos.y(),
                  sprite.body_rect().getRect() if hasattr(sprite, "body_rect") else None,
                  self._bounds.getRect())
+
+    def _log_steady(self, sprite: Any, st: _ProbeState) -> None:
+        """进入稳态时落一行「可见轮廓 vs 屏幕缘」（右侧留缝这类反馈的定案锚点）。
+
+        曝光分母是**身体框**投影 bbox，与素材真实轮廓不是同一个量；这里直接量
+        可见像素外接框，把「距屏幕缘还剩多少 px」写清楚：**正 = 留白（缝）**，
+        **负 = 越出屏外（被屏幕裁掉，正常）**。
+        """
+        try:
+            self._log_visible(sprite, f"稳态 side={st.side} 角度={st.angle:.1f} "
+                                     f"曝光={st.exposure:.2f}")
+        except Exception:  # noqa: BLE001 - 取证日志绝不能拖垮 tick
+            log.debug("[边缘探头] 稳态日志失败", exc_info=True)
+
+    def _log_visible(self, sprite: Any, tag: str) -> None:
+        """落一行「可见像素在屏幕上的真实范围」：正缘差 = 留白（缝），负 = 越出屏外。
+
+        **必须先把可见框按当前姿态旋转**（``rotated_region_bounds``）再平移到屏幕
+        坐标：直接平移未旋转框会算出"贴边"的假数字（45° 时差几十像素）。
+        """
+        pos = sprite.pos
+        rect = sprite.rect()
+        paint = getattr(sprite, "paint_bounds", None)
+        getter = getattr(sprite, "visible_local_rect", None)
+        if callable(getter):
+            local = QRect(getter())
+        elif callable(paint):
+            local = QRect(paint())
+        else:
+            local = QRect(0, 0, rect.width(), rect.height())
+        angle = float(getattr(sprite, "probe_angle", 0.0))
+        projected = rotated_region_bounds(
+            local, QRect(0, 0, rect.width(), rect.height()), angle)
+        vis = projected.translated(int(pos.x()), int(pos.y()))
+        log.info(
+            "[边缘探头] %s pos=(%.1f,%.1f) 帧矩形=%s 绘制框=%s 可见轮廓=%s "
+            "左缘差=%d 右缘差=%d 可用区宽=%d 可用区=%s",
+            tag, pos.x(), pos.y(), rect.getRect(),
+            paint().getRect() if callable(paint) else rect.getRect(),
+            vis.getRect(), vis.left() - self._bounds.left(),
+            self._bounds.right() - vis.right(), self._bounds.width(),
+            self._bounds.getRect(),
+        )
 
     def _begin_transition(self, sprite: Any, st: _ProbeState, mode: str,
                           duration_ms: int, *, to_angle: float, to_exposure: float,
@@ -449,19 +510,6 @@ class SpriteEdgeProbeWorld:
         st.to_exposure = float(to_exposure)
         self._states[sprite] = st
 
-    def _start_straighten(self, sprite: Any, st: _ProbeState, now: float) -> None:
-        """点击拉直：角度回 0、曝光提到 engage（露出更多，方便看全角色）。"""
-        self._begin_transition(sprite, st, STRAIGHTENING, EDGE_STRAIGHTEN_MS,
-                               to_angle=0.0, to_exposure=EDGE_ENGAGE_EXPOSURE,
-                               now=now)
-
-    def _begin_return(self, sprite: Any, st: _ProbeState, now: float) -> None:
-        """拉直倒计时到点：退回常驻探头姿态（角度 ±45、曝光 peek）。"""
-        sign = 1.0 if st.side == "left" else -1.0
-        self._begin_transition(sprite, st, RETURNING, EDGE_RETURN_MS,
-                               to_angle=sign * EDGE_PROBE_ANGLE,
-                               to_exposure=EDGE_PEEK_EXPOSURE, now=now)
-
     def _tick_transition(self, sprite: Any, st: _ProbeState, now: float) -> None:
         elapsed_ms = max(0.0, (now - st.transition_start) * 1000.0)
         progress = eased_progress(elapsed_ms, st.transition_duration_ms,
@@ -474,12 +522,7 @@ class SpriteEdgeProbeWorld:
             return
         if st.mode == ENTERING:
             st.mode = PEEKING
-        elif st.mode == STRAIGHTENING:
-            st.mode = STRAIGHTENED
-            st.idle_remaining = EDGE_IDLE_SECONDS
-            st.last_tick_time = now
-        elif st.mode == RETURNING:
-            st.mode = PEEKING
+            self._log_steady(sprite, st)
 
     def _apply_pose(self, sprite: Any, st: _ProbeState) -> None:
         """把当前 tween 的姿态写到 sprite：先放宽钳制（曝光<1），再写目标 x。"""
@@ -501,6 +544,15 @@ class SpriteEdgeProbeWorld:
             QRect(0, 0, rect.width(), rect.height()),
             angle)
         target_x = probe_target_x(st.side, exposure, projected, self._bounds)
+        now = self._clock()
+        if now - self._last_pose_log_at >= 0.5:
+            self._last_pose_log_at = now
+            log.info(
+                "[边缘探头] 姿态 side=%s 角度=%.1f 曝光=%.2f 目标x=%.1f 实际x=%.1f "
+                "投影框=%s 身体框=%s 可用区=%s", st.side, angle, exposure, target_x,
+                sprite.pos.x(), projected.getRect(), body.getRect(),
+                self._bounds.getRect(),
+            )
         if abs(target_x - sprite.pos.x()) > 1e-9:
             sprite.set_pos(QPointF(target_x, sprite.pos.y()))
 
@@ -516,11 +568,9 @@ def create_edge_probe_world(config: Any, bounds: QRect, *, clock=None) -> Sprite
 
 # 公开接口清单（壳层接线检索用）。
 __all__ = [
-    "EDGE_ENGAGE_EXPOSURE", "EDGE_ENTER_MS", "EDGE_IDLE_SECONDS",
-    "EDGE_PEEK_EXPOSURE", "EDGE_PROBE_ANGLE", "EDGE_REENTRY_SECONDS",
-    "EDGE_REST_SECONDS", "EDGE_REST_SPEED_EPS", "EDGE_RETURN_MS",
-    "EDGE_STRAIGHTEN_MS", "EDGE_TOLERANCE_PX",
-    "ENTERING", "OFF", "PEEKING", "RETURNING", "STRAIGHTENED",
-    "STRAIGHTENING", "SpriteEdgeProbeWorld", "create_edge_probe_world",
-    "edge_side_at_rest", "probe_target_x",
+    "EDGE_ENTER_MS", "EDGE_IDLE_SECONDS", "EDGE_PEEK_EXPOSURE",
+    "EDGE_PROBE_ANGLE", "EDGE_REENTRY_SECONDS", "EDGE_REST_SECONDS",
+    "EDGE_REST_SPEED_EPS", "EDGE_TOLERANCE_PX",
+    "ENTERING", "OFF", "PEEKING", "SpriteEdgeProbeWorld",
+    "create_edge_probe_world", "edge_side_at_rest", "probe_target_x",
 ]

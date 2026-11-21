@@ -7,8 +7,8 @@ import 纯几何函数 probe_body_bounds 做口径对拍）。本文件覆盖：
 - 进入条件：使能（config 每次判定前热读）/贴边/静止三条件齐备才进；
 - 过渡动画时间基：注入时钟，一个 tick 跳 150ms 必须推进到 OutCubic(0.5)
   （tick 计数口径的实现会失败在这条）；
-- 点击真实角色 → 拉直（角度 0、曝光 engage）→ EDGE_IDLE_SECONDS 后自动
-  退回探头姿态；
+- 点击真实角色 → 退出会话、整只回到屏内且**不消费**（交互交回普通点击链路）；
+  仍静止贴边则 EDGE_IDLE_SECONDS 后自动缩回探头（期间再点击把倒计时推后）；
 - cancel 三触发源：拖拽开始 / 碰撞真撞击 / 抛掷态；碰撞取消后按
   EDGE_REENTRY_SECONDS 延迟重进；
 - 多 sprite 各自独立；
@@ -38,21 +38,15 @@ from pet.overlay_window import OverlayWindow
 from pet.pet_sprite import INTERACTION_DRAG, INTERACTION_NORMAL, INTERACTION_THROWN, PetSprite
 from pet.sprite_behavior import STATE_MOVE, BehaviorController
 from pet.sprite_edge_probe import (
-    EDGE_ENGAGE_EXPOSURE,
     EDGE_ENTER_MS,
     EDGE_IDLE_SECONDS,
     EDGE_PEEK_EXPOSURE,
     EDGE_PROBE_ANGLE,
     EDGE_REENTRY_SECONDS,
     EDGE_REST_SECONDS,
-    EDGE_RETURN_MS,
-    EDGE_STRAIGHTEN_MS,
     ENTERING,
     OFF,
     PEEKING,
-    RETURNING,
-    STRAIGHTENED,
-    STRAIGHTENING,
     SpriteEdgeProbeWorld,
     create_edge_probe_world,
 )
@@ -384,33 +378,93 @@ def test_pause_freezes_transition_progress_and_resume_continues():
         EDGE_PROBE_ANGLE * _out_cubic(0.5), abs=0.2)
 
 
-# ---------------------------------------------------------------- 点击拉直 + 自动退回
-def test_click_straightens_then_auto_returns_to_peek():
-    """点击真实角色 → 拉直（0°/engage）→ 5 秒后自动退回探头姿态。"""
+# ---------------------------------------------------------------- 点击退出 + 自动缩回
+def test_click_escapes_to_full_body_and_reenters_after_idle():
+    """点击真实角色 → 退出会话、整只回到屏内（不消费点击）→ 仍贴边则 5 秒后缩回。
+
+    旧机是「拉直成 0°/0.82 保持 5 秒」：曝光永远 < 1 → ``probe_active`` 不收，
+    点击动画/音效被闸门挡住，身体也一直留一截在屏外。新语义 = 点击即 cancel
+    + 常规钳制，``on_sprite_clicked`` 返回 False（点击交回普通点击链路）。
+    """
+    world, clock = _world()
+    sprite = _sprite((0.0, 300.0))
+    _drive_to_peeking(world, clock, [sprite])
+    assert sprite.probe_exposure == pytest.approx(EDGE_PEEK_EXPOSURE)
+    assert sprite.body_rect().left() < BOUNDS.left()   # 前置：身体藏在屏外
+
+    assert world.on_sprite_clicked(sprite) is False    # 不消费点击
+    assert world.mode_of(sprite) == OFF
+    assert sprite.probe_angle == 0.0
+    assert sprite.probe_exposure == 1.0
+    assert sprite.probe_active is False                # 点击动画/漫游闸门已放开
+    assert sprite.body_rect().left() >= BOUNDS.left()  # 整只回到屏内
+    assert world.reentry_remaining_of(sprite) == pytest.approx(EDGE_IDLE_SECONDS)
+
+    # 倒计时期间再点击：只把倒计时推后，仍不消费
+    _run(world, clock, [sprite], EDGE_IDLE_SECONDS - 1.0, step=0.1)
+    assert world.mode_of(sprite) == OFF
+    assert world.on_sprite_clicked(sprite) is False
+    assert world.reentry_remaining_of(sprite) == pytest.approx(EDGE_IDLE_SECONDS)
+
+    # 到点仍静止贴边 → 自动缩回探头（重新进场过渡后回到 PEEKING）
+    _run(world, clock, [sprite],
+         EDGE_IDLE_SECONDS + EDGE_ENTER_MS / 1000.0 + 0.1, step=0.05)
+    assert world.mode_of(sprite) == PEEKING
+    assert sprite.probe_angle == pytest.approx(EDGE_PROBE_ANGLE)
+    assert sprite.probe_exposure == pytest.approx(EDGE_PEEK_EXPOSURE)
+
+
+def test_drag_start_rebases_grab_offset_so_the_pet_follows_the_cursor():
+    """拖拽升级 cancel 探头后，抓取偏移必须按当前光标重设（跟手、不钉在边缘）。
+
+    不重设时：``on_press`` 记的偏移是探头态位置（身体在屏外）算的，cancel 又把
+    位置钳回边缘 → 之后每次 ``on_move`` 的落点都被钳回边缘，用户要先移动
+    "离屏量"那么多宠物才开始动（实机「必须把整只拖进屏幕」）。
+    """
     world, clock = _world()
     sprite = _sprite((0.0, 300.0))
     _drive_to_peeking(world, clock, [sprite])
 
-    assert world.on_sprite_clicked(sprite) is True
-    assert world.mode_of(sprite) == STRAIGHTENING
+    press = QPointF(40.0, 360.0)          # 按在屏幕内可见的那部分上
+    sprite.on_press(press)
+    world.on_sprite_drag_started(sprite)  # 过阈值：取消探头 + 常规钳制
+    sprite.begin_drag()
+    clamped_x = sprite.pos.x()
 
-    _run(world, clock, [sprite], EDGE_STRAIGHTEN_MS / 1000.0 + 0.05, step=0.02)
-    assert world.mode_of(sprite) == STRAIGHTENED
-    assert sprite.probe_angle == pytest.approx(0.0)
-    assert sprite.probe_exposure == pytest.approx(EDGE_ENGAGE_EXPOSURE)
-    ratio = _visible_ratio(sprite)
-    assert ratio == pytest.approx(EDGE_ENGAGE_EXPOSURE, abs=0.02)
+    # 壳层在升级那一刻做的重设（等价 overlay_shell._rebase_drag_after_probe）
+    sprite.rebase_drag_offset(press)
+    sprite.on_move(press + QPointF(12.0, 0.0))
 
-    # 倒计时未到：保持拉直
-    _run(world, clock, [sprite], EDGE_IDLE_SECONDS - 0.5, step=0.1)
-    assert world.mode_of(sprite) == STRAIGHTENED
+    assert sprite.pos.x() == pytest.approx(clamped_x + 12.0, abs=1.5)
+    # 轨迹从重设那一拍重新起算：探头态到钳制位的"跳变"不能被当成甩出初速
+    trail = sprite.drag_trail
+    assert len(trail) == 2
+    assert (trail[0][1], trail[0][2]) == (press.x(), press.y())
 
-    _run(world, clock, [sprite], 0.6, step=0.1)
-    assert world.mode_of(sprite) == RETURNING
-    _run(world, clock, [sprite], EDGE_RETURN_MS / 1000.0 + 0.05, step=0.02)
+
+def test_invisible_sprite_never_peeks_and_hidden_session_is_cancelled():
+    """逐只隐藏（visible=False）不进入探头；在途会话被收掉并清姿态。
+
+    逐只隐藏不是整窗 pause：继续给隐藏 sprite 摆姿态，重新显示时就是
+    "半身在屏外 + 点击只脱困"的僵态（用户实测过）。
+    """
+    world, clock = _world()
+    sprite = _sprite((0.0, 300.0))
+    sprite.visible = False
+
+    _run(world, clock, [sprite], 1.5)
+    assert world.mode_of(sprite) == OFF
+    assert sprite.probe_angle == 0.0
+
+    sprite.visible = True
+    _drive_to_peeking(world, clock, [sprite])
     assert world.mode_of(sprite) == PEEKING
-    assert sprite.probe_angle == pytest.approx(EDGE_PROBE_ANGLE)
-    assert sprite.probe_exposure == pytest.approx(EDGE_PEEK_EXPOSURE)
+
+    sprite.visible = False
+    _run(world, clock, [sprite], 2.0)
+    assert world.mode_of(sprite) == OFF
+    assert sprite.probe_angle == 0.0
+    assert sprite.probe_exposure == 1.0
 
 
 def test_click_on_non_probing_sprite_is_not_consumed():
@@ -537,10 +591,10 @@ def test_multiple_sprites_are_independent():
     assert world.angle_of(left) == pytest.approx(EDGE_PROBE_ANGLE)
     assert world.angle_of(right) == pytest.approx(-EDGE_PROBE_ANGLE)
 
-    # 点击左：右的姿态不受影响
-    world.on_sprite_clicked(left)
-    _run(world, clock, [left, right], EDGE_STRAIGHTEN_MS / 1000.0 + 0.05, step=0.02)
-    assert world.mode_of(left) == STRAIGHTENED
+    # 点击左：左退出会话（整只回屏内），右的姿态不受影响
+    assert world.on_sprite_clicked(left) is False
+    assert world.mode_of(left) == OFF
+    assert left.probe_angle == 0.0 and left.probe_exposure == 1.0
     assert world.mode_of(right) == PEEKING
     assert world.angle_of(right) == pytest.approx(-EDGE_PROBE_ANGLE)
     assert right.probe_exposure == pytest.approx(EDGE_PEEK_EXPOSURE)
@@ -680,6 +734,23 @@ def test_dpr_change_keeps_probe_geometry_logical():
     sprite.paint(painter)
     assert painter.names() == ["save", "translate", "rotate", "translate",
                                "drawPixmap", "restore"]
+
+
+def test_visible_local_rect_matches_the_alpha_block():
+    """可见轮廓 = 当前帧 alpha>=阈值的外接框（逻辑坐标）；探头稳态取证靠它算贴边差。"""
+    clip = FakeClip()
+    clip.image = QImage(640, 360, QImage.Format.Format_ARGB32)
+    clip.image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(clip.image)
+    painter.fillRect(QRect(30, 20, 40, 40), Qt.GlobalColor.red)
+    painter.end()
+    lib = FakeLibrary()
+    lib._clips["idle1"] = clip
+    sprite = PetSprite(lib, pos=QPointF(0, 0), scale=1.0)
+    sprite.bind_clip("idle1")
+    sprite.paint(RecordingPainter())  # 建首帧（含命中图）
+
+    assert sprite.visible_local_rect() == QRect(30, 20, 40, 40)
 
 
 def test_alpha_hit_testing_follows_probe_rotation():

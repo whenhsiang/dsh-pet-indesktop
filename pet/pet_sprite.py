@@ -24,7 +24,7 @@ import math
 import time
 
 from PySide6.QtCore import QObject, QPoint, QPointF, QRect, QRectF, Qt
-from PySide6.QtGui import QImage, QPainter, QPixmap
+from PySide6.QtGui import QBitmap, QImage, QPainter, QPixmap, QRegion
 
 from . import catalog
 from . import physics as physics_mod
@@ -125,6 +125,8 @@ class PetSprite(QObject):
         self._frame_dirty = False
         self._pixmap: QPixmap | None = None
         self._hit_image: QImage | None = None
+        # 可见像素外接框缓存 (frame_sig, QRect)；见 visible_local_rect
+        self._visible_rect_cache: tuple | None = None
         self._dragging = False
         self._drag_offset: QPointF | None = None
         # 拖拽轨迹（(monotonic_ts, x, y) 光标样本）：松手初速估算的输入，
@@ -1192,6 +1194,35 @@ class PetSprite(QObject):
         if abs(throw_angle) >= 1e-6:  # 与上面的 begin 配对出栈
             self._end_throw_rotation(painter, throw_angle)
 
+    def visible_local_rect(self) -> QRect:
+        """当前帧可见像素的**局部逻辑**外接框（alpha ≥ 命中阈值；无帧时回退整幅）。
+
+        与 ``alpha_at`` 同源（命中图），但外接框走 Qt 的 C++ 路径
+        （``createAlphaMask`` → ``QBitmap`` → ``QRegion``）：逐位扫描比它慢 3.5 倍
+        （见 window.py ``_sync_mask`` 的实测教训）。按帧签名缓存，稳态零成本。
+
+        用途：探头姿态的「可见轮廓 vs 屏幕缘」取证（曝光分母是身体框投影 bbox，
+        不是真实轮廓，两者在 45° 时能差出十几像素）。
+        """
+        lw, lh = self._logical_size()
+        img = self._hit_image
+        if img is None:
+            return QRect(0, 0, lw, lh)
+        cached = self._visible_rect_cache
+        if cached is not None and cached[0] == self._frame_sig:
+            return QRect(cached[1])
+        region = QRegion(QBitmap.fromImage(img.createAlphaMask()))
+        box = region.boundingRect()
+        if not box.isEmpty() and img.width() > 0 and img.height() > 0:
+            # 命中图是物理像素：按图实际比例换算回逻辑坐标（同 alpha_at 口径）
+            x1 = int(box.left() * lw / img.width())
+            y1 = int(box.top() * lh / img.height())
+            x2 = int(math.ceil((box.left() + box.width()) * lw / img.width()))
+            y2 = int(math.ceil((box.top() + box.height()) * lh / img.height()))
+            box = QRect(x1, y1, max(0, x2 - x1), max(0, y2 - y1))
+        self._visible_rect_cache = (self._frame_sig, QRect(box))
+        return QRect(box)
+
     def alpha_at(self, local: QPoint | QPointF) -> int:
         """sprite 局部**逻辑**坐标处的 alpha（0-255）。镜像已烘焙进缓存帧，无需再翻转。
 
@@ -1251,6 +1282,25 @@ class PetSprite(QObject):
         self._drag_offset = QPointF(pos) - self.pos
         self.velocity = QPointF(0, 0)
         self._drag_trail = [(self._clock(), pos.x(), pos.y())]
+
+    def rebase_drag_offset(self, pos: QPointF) -> None:
+        """用过阈值那一帧的光标重设抓取偏移（拖拽跟手，不跳、不钉在边缘）。
+
+        为什么需要：过阈值时探头 ``cancel`` 会 ``clear_probe_pose`` →
+        ``set_pos`` 按常规钳制把身体从屏外弹回边缘，``self.pos`` 因此变了，
+        而 ``on_press`` 记的 ``_drag_offset`` 还是**旧位置**（身体在屏外）算的。
+        不重设的话每一帧 ``on_move`` 的落点 ``cursor - offset`` 都会被钳回边缘——
+        实机表现是光标要先移动"离屏量"那么多宠物才动，然后跳一下。
+
+        轨迹也只保留当前这一拍：钳制那一跳是程序位移，留着会被
+        ``estimate_release_velocity`` 当成甩动速度（松手变成意外抛出）。
+        """
+        if self._drag_offset is None:
+            return
+        self._drag_offset = QPointF(pos) - self.pos
+        self._drag_trail = [(self._clock(), pos.x(), pos.y())]
+        if self._drag_spring_target is not None:
+            self._drag_spring_target = QPointF(self.pos)
 
     def translate_frame(self, delta: QPointF) -> None:
         """拖拽中换局部坐标系（跨屏移交宿主）：把**绝对坐标类**样本整体平移。

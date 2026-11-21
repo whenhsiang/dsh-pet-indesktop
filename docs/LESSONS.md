@@ -3,6 +3,36 @@
 > 活文档：每条 2-3 行（现象 → 对策），按日期倒序；先搜同类再追加。新会话经
 > `AGENTS.md`（自动加载）触达；与 AGENTS.md 冲突时以 AGENTS.md 纪律为准。
 
+## 2026-11-21
+
+- **同一批 run_commands 里「写文件 + 读文件」会读到旧内容**：多条命令是并发执行的，
+  `python 写文件` 与 `sed/grep 读文件` 放同一批时，读的可能是写前快照（本轮两次踩到，
+  误判成"没写进去"）→ 写与回读分两批，写完单独 `git --no-pager diff --stat` 核实。
+- **xdist 并行全量可能在 99% 卡死**：worker 测试跑完但不退出（控制线程停在 execnet 读、
+  worker 停在 Qt/CoreAudio 信号量上），日志停在最后一个进度点、没有 summary → 改用串行
+  `-p no:randomly` 全量（11:43）拿确定结论；并行 hang 不等于有失败，别拿中途进度点当结论。
+- **合成鼠标事件下禁止用 `QCursor.pos()` 当手势坐标**：刷新抓取偏移若取真实光标，测试/
+  自动化里会把宠物甩到无关位置（本轮首版 rebase 就这样打红 8 条拖拽/气泡/跨屏用例）→
+  一律用事件自带的 `globalPos`，缺省时保持原偏移（宁可不动也不能猜）。
+- **动共享拖拽语义前先跑最敏感的一组用例**：`test_overlay_hosts_multiscreen` /
+  `test_overlay_seam_passage` / `test_overlay_virtual_desktop` / `test_sprite_bubble`（8 条），
+  它们用合成事件断言落点；新语义要么逐位不变，要么先改用例并写清为什么。
+- **删状态机的死状态要连带常量/`__all__`/测试 import**：本轮删 `STRAIGHTEN*/RETURNING`
+  后 `EDGE_ENGAGE_EXPOSURE` 等仍被测试导入 → 删前 `grep -rn` 全仓，改完 `pytest
+  --collect-only -q`（1.7 秒）确认没有 ImportError，再跑焦点用例。
+- **macOS 首建窗会偷偷把窗口收窄 20pt/边**：`setGeometry(availableGeometry)` 在 `show()`
+  之前调用时，原生 frame 被 `visibleFrame` 收进——本机实测 `(0,33,1470,923)` →
+  `(0,33,1450,903)`；**show 之后**再 `setGeometry` 才生效（与 Tool/透明 flags 无关，四种
+  组合都复现）→ 全屏 overlay 必须在 `showEvent` 后补一次（0ms/60ms 两拍），否则
+  `host.bounds` 与真实窗口差 20px，表现为"右侧贴边留一条缝 / 贴底脚被切"且左侧正常。
+  取证手段：ctypes + `CGWindowListCopyWindowInfo` 读**原生**矩形，别只信 `QWidget.geometry()`。
+
+- **重绘闸门与命中判据必须同源**：`paintEvent` 若用未旋转的 `rect()` 判脏区、`sprite_at` 用
+  `paint_bounds()`，45° 探头/抛掷旋转把像素画到 rect 外时，"只脏在溢出带"的那一拍会整只不画
+  （残影/直边）→ 两处统一用 `paint_bounds()`。
+- **逐只隐藏不是整窗 pause**：按 tick 推进的世界（边缘探头/行为控制器）必须自己跳过
+  `sprite.visible == False` 并收掉在途会话，否则隐藏期间仍被摆姿态，重新显示即僵态。
+
 ## 2026-11-15
 
 - **终端/heredoc 不可靠**：heredoc 会被终端集成吞掉（文件未建、后续命令不执行），

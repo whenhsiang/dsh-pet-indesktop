@@ -2,6 +2,49 @@
 
 > 与 `docs/LESSONS.md`（教训）配套。本文件只记状态与决策，不记流水账。
 
+## 交接速查（2026-11-21 收尾：**新会话先读这一节**）
+
+**分支 / 工作区**（`git status -sb` 实测）
+- 分支 `OnlyMacos`，本地 = `origin/OnlyMacos` = `f755ef1`；远程 `origin` =
+  `https://github.com/whenhsiang/dsh-pet-indesktop.git`（无 upstream remote）。
+- 本批改动**已提交**（`git log -1` 即本批：`fix(overlay): macOS 首建窗 20pt 收窄 + 边缘探头点击脱困/拖拽 rebase`）；
+  收尾后 `git status -sb` 应为干净。`main` 只读（= 上游 `34d810b`）。
+- 提交内容：9 个文件（4 个产品文件 + 3 个测试 + 2 个文档），详见下一段。
+
+**本批改了什么**（全部已验证，细节见文末「2026-11-21 收口」）
+- `pet/overlay_window.py`：show 后补 `setGeometry`（0/60ms）+ `resizeEvent` 兜底（macOS 首建窗收窄 20pt）；
+  `paintEvent` 闸门改 `paint_bounds()`。
+- `pet/sprite_edge_probe.py`：点击 = `cancel("click_out")` 且不消费点击；`EDGE_IDLE_SECONDS` 后自动缩回；
+  删 `STRAIGHTEN*/RETURNING` 死状态；不可见 sprite 不参与探头；新增姿态/稳态取证日志。
+- `pet/pet_sprite.py`：`rebase_drag_offset()`（拖拽跟手）+ `visible_local_rect()`（alpha 外接框）。
+- `pet/overlay_shell.py`：拖拽升级只在"探头取消真的挪了位置"时 rebase（事件 `globalPos`，不用 `QCursor`）；
+  `[overlay 几何]` 日志。
+- `tests/*`：新增 4 条回归（点击脱困/重进推后、拖拽 rebase、重绘闸门、不可见 sprite）。
+- `docs/LESSONS.md`：2026-11-21 共 7 条。
+
+**验收 / 复现**（源码跑；`/Applications/DshPet.app` 是 10-22 旧构建，不含本批）
+1. `cd /Users/wesley/projects/dshpet/dsh-pet-indesktop && .venv/bin/python -m pet`
+   （先退出正在跑的实例：单实例门；源码跑用 `dsh-pet-standalone` 配置，需在设置里打开「边缘探头」）
+2. 贴右边缘 → 停 2s（45° 探头，右缘应"被屏幕裁掉"而非留白）；
+   点一下 → 整只回屏内 + 有点击动画/音效；不动 5s → 自动缩回探头；左边缘同样。
+3. 贴底/「回到右下角」的脚不应被切（同一个 20pt 问题）。
+
+**取证入口**
+- 日志：`~/Library/Application Support/dsh-pet-standalone/pet-<PID>.log`
+  （打包 webm-chat 变体在 `dsh-pet-standalone-webm-chat/`；INFO 级、1MB×2 滚动、启动清 >7 天）。
+- 关键行：`[overlay 几何] …`、`overlay: show 后重设窗口矩形 …`、`[边缘探头] 稳态/点击脱困 …`;
+  `左/右缘差` **正 = 留白（缝）**，**负 = 越出屏外（正常）**。
+- 原生窗口矩形（Qt 的 `geometry()` 会说谎）：ctypes + `CGWindowListCopyWindowInfo` 过滤 `kCGWindowOwnerPID`，
+  读 `kCGWindowBounds` 的 X/Y/Width/Height；本机正常值必须是 `(0, 33, 1470, 923)`。
+
+**验证命令**
+- T1：`ruff check pet/ tests/` + `pytest --collect-only -q` + 焦点用例。
+- T3（串行全量，本轮 11:45 / 8506 passed）：见下方「验证协议」的 T2 命令但去掉 `-n auto`、加 `-p no:randomly`；
+  三个 webm 生命周期文件单独串行跑（41 passed）。
+
+**未决隐患**：见文末「2026-11-21 收口」的 5 条（legacy 探头语义、20pt 对其他浮动窗、1px 口径差、
+`active` 口径、`body_box` 不做镜像归一化）。
+
 ## 事实
 - 仓库：单远程 origin（自己的仓库，无 upstream）；`main` 只读=上游 `34d810b`。
 - 分支 `OnlyMacos`（跟踪 origin/OnlyMacos），线性每批一提交：
@@ -72,6 +115,18 @@
 ## 未完成
 - **主线批次全部完成。** 剩余工作全部在下方「顺手做清单」（不排期）。
 - 待办池：空（bug/功能按「用户可感知 bug 优先」，登记类型/现象/期望/批次）。
+  - **2026-11-20 用户登记（只留记录，暂不实施）**：删除「生小肥鱼」相关功能。
+    范围：右键「生小肥鱼 / 退出子肥鱼」两项、`context_menus` 的 `spawn_pet` /
+    `clear_spawned_pets`、`slot_manager` 的 spawn 大小/灵动岛策略、设置页「生小肥鱼」组、
+    `overlay_shell.spawn_pet` 与子宠身份/档案链。动手前先确认多宠身份链已可安全摘除、
+    slot0 主宠不受影响。
+  - **2026-11-20 用户登记（只留记录，暂不实施）**：删除碰撞相关功能。
+    范围：`pet/collision.py`、`pet/sprite_collision.py`、三路碰撞监听
+    （`_on_collision_squash` / `_on_collision_probe` / `_on_collision_sound`）、
+    `collision_enabled` / `collision_sound_*` 设置项；连带决策：抛掷反弹、
+    岛屿 stadium clamp（`sprite_collision.capsule_circles` 经 `island/bridge.py`）、
+    边缘探头「被撞飞 → 重进倒计时」三条依赖要一并给出替代或一并删除。
+    两项均为功能级删除：单独批次 + 独立提交，先跑 `pytest --collect-only -q` 枚举 import 断点。
 
 ## 顺手做清单（2026-11-15 用户决定：不单独排期；改到对应功能时一并做，
 ## 独立提交 + T1/T2 验证，不与功能改动混 diff）
@@ -83,6 +138,63 @@
 - 被删模块的 test_architecture 删除守卫，随各自顺手批补。
 - `scripts/cleanup_mei_cache.py` + `test_cleanup_mei_cache_cli.py`（Windows onefile 时代的
   临时目录清理工具，README 章节已删）——下次动 scripts/ 时一并评估删除。
+
+## 边缘探头唤醒语义（2026-11-21，**本地改动未提交**）
+- 用户反馈：贴左右边隐藏后点击唤醒，仍有一小截身体在屏外且**不能点击互动**；只能整只拖进屏幕。
+- 根因：`EDGE_ENGAGE_EXPOSURE=0.82 < 1` → `probe_active` 不收（`_enter_acts`/`_plan_move` 闸门一直关着）；
+  `on_sprite_clicked` 在 STRAIGHTENED 只重置倒计时却 `return True`，壳层据此吞掉点击动画/音效/气泡；
+  唯一能真正退出的是 `cancel`（真拖拽/碰撞/关功能/回角落）。
+- 修法（用户选的 A）：点击 = `cancel("click_out")` + 返回 **False**（点击交回普通链路，整只经常规钳制回屏内），
+  仍静止在原边则 `EDGE_IDLE_SECONDS` 后自动缩回探头（期间再点击把倒计时推后）；
+  拖拽升级时**只有探头取消真的挪了位置**才用事件全局坐标重设抓取偏移（修「拖很久才跟手」）；
+  `STRAIGHTENING/STRAIGHTENED/RETURNING` 三个死状态与 `EDGE_ENGAGE_EXPOSURE` 一并删除。
+- 验证：T3 串行全量 **8503 passed / 64 skipped / 0 failed** + webm 族串行 **41 passed**（合计 8544）；
+  新增回归用例：点击退出后整只回屏内且 `probe_active=False`、重进倒计时可被点击推后、
+  拖拽 rebase 后第一帧 1:1 跟手、壳层只在探头挪位时 rebase（普通拖拽逐位不变）。
+- 诊断日志（为右侧「贴边留一条缝」准备）：`[overlay 几何] 建宿主/几何重算 overlay=… bounds=… screen=… geometry=… available=… dpr=…`，
+  以及 `[边缘探头] 姿态 side=… 目标x=… 实际x=… 投影框=… 身体框=… 可用区=…`（0.5s 节流）。
+- **右侧「贴边留一条缝」根因（已修）**：macOS **首次原生建窗前**的 `setGeometry` 会被
+  `visibleFrame` 收窄——实机用 `CGWindowListCopyWindowInfo` 读原生矩形：Qt 报
+  `(0,33,1470,923)`，原生实际 `(0,33,1450,903)`（右/下各少 **20pt**）；**show 之后**再
+  `setGeometry` 才被接受（本机四种 flags 组合都能复现：与 Tool/透明无关）。
+  后果：壳的 `host.bounds` 是请求矩形（1470×923），sprite 坐标系比真实窗口大 20px →
+  贴右边缘的角色被窗口裁掉 20px（用户看到的就是"离屏幕还有段距离"），贴底时脚同样被切；
+  左侧因窗口左缘 x=0 对齐所以看不出来。
+  修法：`OverlayWindow.showEvent` 里补 `_reassert_geometry_after_show()`，并排 `0ms/60ms`
+  两拍延迟对账（Cocoa 的收窄晚于 showEvent；只在 cocoa 平台执行，offscreen 测试零影响）。
+  验证：同一脚本 show 后 Qt 与原生矩形都变成 `(0,33,1470,923)`。
+- 遗留：legacy `pet/edge_probe.py` 仍是旧的「拉直 0.82」语义（只有 `stream_capture_mode` 直播捕获走那条）。
+  右侧留缝的根因与修法见「右侧贴边留一条缝·根因（已修）」及文末「2026-11-21 收口」——**已修并由用户实机确认**。
+
+## 2026-11-21 收口（**用户已实机确认**）
+- **20pt 收窄修复确认通过**：右贴边真的贴住、点击唤醒整只回屏内、5 秒后自动缩回探头；左右一致。
+- 顺手修掉的两个隐患（均带回归用例）：
+  1. `overlay_window.paintEvent` 的重绘闸门由 `region.intersects(sprite.rect())` 改为
+     `paint_bounds()`——45° 探头/抛掷旋转把像素画到 `rect()` 之外，"只脏在溢出带"的那一拍
+     会被整只跳过（该擦的没擦、该画的没画 → 残影/直边）。用例
+     `test_paint_gate_uses_paint_bounds_for_rotated_overflow`。
+  2. 逐只隐藏（`sprite.visible == False`）的 sprite 仍会被探头继续摆姿态 → 重新显示时
+     留下"半身在屏外 + 点击只脱困"的僵态。`SpriteEdgeProbeWorld.tick` 现在跳过不可见
+     sprite 并收掉在途会话（`cancel("hidden")`）。用例
+     `test_invisible_sprite_never_peeks_and_hidden_session_is_cancelled`。
+- 清理（零行为）：`_visible_rect_cache` 改显式初始化；`mouseReleaseEvent` 删掉"探头消费点击"
+  的死分支；`showEvent` 的延迟对账改 `for delay_ms in (0, 60)`；新增 `resizeEvent` 兜底
+  （原生重建/切屏导致的收窄也自动补回）。
+- 验证：**T3 串行全量 8506 passed / 64 skipped / 0 failed（11:45）** + webm 族串行 41（合计 8547）；冒烟改动后再跑焦点 89 绿。
+- **遗留隐患（登记，本次未处理）**：
+  - legacy `pet/edge_probe.py` 仍是旧「点击拉直 0.82」语义（只有 `stream_capture_mode` 直播捕获走）。
+  - macOS 首建窗 20pt 收窄是**平台行为**：`OverlayWindow` 已补正，但将来若加别的全屏窗口
+    （全屏气泡/调试窗）必须自己补 `showEvent`/`resizeEvent` 那一次 `setGeometry`，否则同样差 20pt。
+  - `probe_target_x` 右缘用 `bounds.right()`（含端点），`edge_side_at_rest` 用 `right()-1` —— 1px 口径差，
+    无观测影响，改到该函数时一并统一。
+  - `SpriteEdgeProbeWorld.active` = 任意 `mode != OFF`（含重进倒计时态），壳层若拿它当"正在探头"
+    门禁需注意这一口径（当前壳层只用它做快捷判断）。
+  - `catalog._body_box_scaled` 的 docstring 写"已镜像对称化"，但代码只读 manifest、**不做镜像归一化**；
+    而 `pet_sprite._body_local_rect` 在 `facing == "right"` 时画的是镜像帧。左右不对称的角色包会因此
+    出现"一侧贴边、另一侧留缝/钳制偏差"（shenshen 的 box 左右各 212px，所以看不出来）。改到该函数时
+    要么按 `_mirror_frame()` 翻转 box，要么改掉那句 docstring。
+  - macOS 的 20pt 窗口收窄是**所有窗口**都会遇到的（`constrainFrameRect`）：贴屏幕右/下缘的浮动窗
+    （气泡、快速对话、灵动岛）若将来改成"贴边"定位，也要预期被让 20pt；本次只补了 OverlayWindow。
 
 ## 验证协议
 - **T1 快门**（每批，~2 分钟）：`ruff check pet/ tests/` + `pytest --collect-only -q`
